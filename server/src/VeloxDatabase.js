@@ -1,7 +1,7 @@
 const VeloxDbPgBackend = require("./backends/pg/VeloxDbPgBackend");
 const VeloxSqlUpdater = require("./VeloxSqlUpdater") ;
-const VeloxLogger = require("../../../helpers/VeloxLogger") ;
-const AsyncJob = require("../../../helpers/AsyncJob") ;
+const VeloxLogger = require("velox-commons/VeloxLogger") ;
+const AsyncJob = require("velox-commons/AsyncJob") ;
 /**
  * VeloxDatabase helps you to manage your database
  */
@@ -75,6 +75,23 @@ class VeloxDatabase {
                 });
             }
         }
+
+        this.expressExtensionsProto = {} ;
+        for(let extension of VeloxDatabase.extensions){
+            if(extension.extendsExpressProto){
+                Object.keys(extension.extendsExpressProto).forEach((key)=> {
+                    this.expressExtensionsProto[key] = extension.extendsExpressProto[key];
+                });
+            }
+        }
+        this.expressExtensionsConfigure = [] ;
+        for(let extension of VeloxDatabase.extensions){
+            if(extension.extendsExpressConfigure){
+                extension.extendsExpressConfigure.forEach((c)=>{
+                    this.expressExtensionsConfigure.push(c) ;
+                });
+            }
+        }
     }
 
     /**
@@ -87,20 +104,76 @@ class VeloxDatabase {
         this.backend.createIfNotExist((err)=>{
             if(err){ return callback(err); }
             
-            this.backend.open((err, client)=>{
-                if(err){ return callback(err); }
+            this.transaction((client, done)=>{
+                if(err){ return done(err); }
 
                 this._createDbVersionTable(client, (err)=>{
-                    if(err){ return callback(err); }
+                    if(err){ return done(err); }
 
                     this._getAndApplyChanges(client, (err)=>{
-                        if(err){ return callback(err); }
+                        if(err){ return done(err); }
 
-                        callback() ;
+                        done() ;
                     }) ;
                 }) ;
-            }) ;
+            }, callback) ;
         }) ;
+    }
+
+    /**
+     * add interceptor from extensions on the client
+     * 
+     * @param {VeloxDatabaseClient} client database client
+     */
+    _prepareClient(client){
+        for(let extension of VeloxDatabase.extensions){
+            if(extension.extendsClient){                
+                Object.keys(extension.extendsClient).forEach((key)=> {
+                    client[key] = extension.extendsClient[key];
+                });
+            }
+            if(extension.interceptClientQueries){
+                var callInterceptor = (interceptor, args, callback)=>{
+                    if(!interceptor){ return callback() ;}
+                    if(interceptor.length === args.length){
+                        try{
+                            interceptor.apply(client, args) ;
+                            callback() ;
+                        }catch(err){
+                            callback(err) ;
+                        }
+                    }else{
+                        interceptor.apply(client, args.concat([callback])) ;
+                    }
+                } ;
+                extension.interceptClientQueries.forEach((interception)=>{
+                    let originalFunction = client[interception.name] ;
+                    client[interception.name] = function(){
+                        let args = Array.prototype.slice.call(arguments) ;
+                        var shouldIntercept = !interception.table || args[0] === interception.table ;
+                        if(shouldIntercept){
+                            let realCallback = args.pop();
+                            callInterceptor(interception.before, args, (err)=>{
+                                if(err){ return realCallback(err); }
+                                originalFunction.apply(this, args.concat([function(err){
+                                    if(err){
+                                        return realCallback(err) ;
+                                    }
+                                    args = Array.prototype.slice.call(arguments) ;
+                                    args = args.splice(1) ;
+                                    callInterceptor(interception.after, args, (err)=>{
+                                        if(err){ realCallback(err); }
+                                        realCallback.apply(null, [null].concat(args)) ;
+                                    }) ;
+                                }.bind(this)])) ;
+                            }) ;
+                        } else {
+                            originalFunction.apply(this, args) ;
+                        }
+                    }.bind(client) ;
+                }) ;
+            }
+        }
     }
 
     /**
@@ -135,6 +208,9 @@ class VeloxDatabase {
     inDatabase(callbackDoInDb, callbackDone){
         this.backend.open((err, client)=>{
             if(err){ return callbackDone(err); }
+            this._prepareClient(client) ;
+           
+
             try {
                 callbackDoInDb(client, function(err){
                     client.close() ;
@@ -222,7 +298,11 @@ class VeloxDatabase {
     transaction(callbackDoTransaction, callbackDone, timeout){ 
         this.backend.open((err, client)=>{
             if(err){ return callbackDone(err) ;}
-            client.transaction(callbackDoTransaction, (err)=>{
+            
+            client.transaction((tx, done)=>{
+                this._prepareClient(client) ;
+                callbackDoTransaction(client, done) ;
+            }, (err)=>{
                 client.close() ;
                 if(err){ 
                     return callbackDone(err) ;
@@ -324,12 +404,14 @@ class VeloxDatabase {
         let results = [] ;
         let recordCache = {};
         let updatePlaceholder = (record)=>{
-            for(let k of Object.keys(record)){
-                if(record[k] && typeof(record[k]) === "string" && record[k].indexOf("${") === 0){
-                    //this record contains ${table.field} that must be replaced by the real value of last inserted record of this table                        
-                    let [othertable, otherfield] = record[k].replace("${", "").replace("}", "").split(".") ;
-                    if(recordCache[othertable]){
-                        record[k] = recordCache[othertable][otherfield] ;
+            if(typeof(record) === "object"){
+                for(let k of Object.keys(record)){
+                    if(record[k] && typeof(record[k]) === "string" && record[k].indexOf("${") === 0){
+                        //this record contains ${table.field} that must be replaced by the real value of last inserted record of this table                        
+                        let [othertable, otherfield] = record[k].replace("${", "").replace("}", "").split(".") ;
+                        if(recordCache[othertable]){
+                            record[k] = recordCache[othertable][otherfield] ;
+                        }
                     }
                 }
             }
@@ -368,6 +450,19 @@ class VeloxDatabase {
                                 record: updatedRecord
                             }) ;
                             recordCache[table] = updatedRecord ;
+                            cb() ;
+                        }) ;
+                    });
+                }
+                if(action === "remove"){
+                    job.push((cb)=>{
+                        updatePlaceholder(record) ;
+                        tx.remove(table, record, (err)=>{
+                            if(err){ return cb(err); }
+                            results.push({
+                                action: "remove",
+                                table : table
+                            }) ;
                             cb() ;
                         }) ;
                     });
@@ -476,18 +571,19 @@ class VeloxDatabase {
 
                 let changes = updater.getChanges(version) ;
 
-                if(changes.length>0){
-                    let lastVersion = updater.getLastVersion() ;
-                    this.logger.info("Update from "+version+" to "+lastVersion+" - "+changes.length+" changes to apply") ;
+                let lastVersion = updater.getLastVersion() ;
 
-                    for(let extension of VeloxDatabase.extensions){
-                        if(extension.addSchemaChanges){
-                            let extensionChanges = extension.addSchemaChanges(this.options.backend, version, lastVersion) ;
-                            for(let c of extensionChanges){
-                                changes.push(c) ;
-                            }
+                for(let extension of VeloxDatabase.extensions){
+                    if(extension.addSchemaChanges){
+                        let extensionChanges = extension.addSchemaChanges(this.options.backend, version, lastVersion) ;
+                        for(let c of extensionChanges){
+                            changes.push(c) ;
                         }
                     }
+                }
+
+                if(changes.length>0){
+                    this.logger.info("Update from "+version+" to "+lastVersion+" - "+changes.length+" changes to apply") ;
 
                     client.runQueriesAndUpdateVersion(changes, lastVersion, callback) ;
                 }else{

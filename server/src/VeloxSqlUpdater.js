@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const hjson = require("hjson") ;
-const AsyncJob = require("../../../helpers/AsyncJob") ;
+const AsyncJob = require("velox-commons/AsyncJob") ;
 
 /**
  * contains a SQL change

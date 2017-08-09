@@ -1,4 +1,4 @@
-const AsyncJob = require("../../../../helpers/AsyncJob") ;
+const AsyncJob = require("velox-commons/AsyncJob") ;
 
 /**
  * This extension create a table modification tracker.

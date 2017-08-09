@@ -1,6 +1,6 @@
 const { Pool, Client } = require('pg');
-const AsyncJob = require("../../../../../helpers/AsyncJob") ;
-const VeloxLogger = require("../../../../../helpers/VeloxLogger") ;
+const AsyncJob = require("velox-commons/AsyncJob") ;
+const VeloxLogger = require("velox-commons/VeloxLogger") ;
 
 const DB_VERSION_TABLE = "velox_db_version" ;
 
@@ -637,27 +637,25 @@ class VeloxDbPgClient {
      * @param {function(err)} callback - called when finish
      */
     runQueriesAndUpdateVersion(changes, newVersion, callback){
-        this.transaction((tx, done)=>{
-            let job = new AsyncJob(AsyncJob.SERIES) ;
-            for(let change of changes){
-                if(change.run){
-                    //this change is a function that must be executed
-                    job.push((cb)=>{
-                        
-                        change.run(tx, cb) ;
-                    }) ;
-                } else {
-                    //this change is a SQL query to run
-                    job.push((cb)=>{
-                        tx.query(change.sql, change.params, cb) ;
-                    }) ;
-                }
+        let job = new AsyncJob(AsyncJob.SERIES) ;
+        for(let change of changes){
+            if(change.run){
+                //this change is a function that must be executed
+                job.push((cb)=>{
+                    
+                    change.run(this, cb) ;
+                }) ;
+            } else {
+                //this change is a SQL query to run
+                job.push((cb)=>{
+                    this.query(change.sql, change.params, cb) ;
+                }) ;
             }
-            job.push((cb)=>{
-                tx.query(`UPDATE ${DB_VERSION_TABLE} SET version = $1, last_update = now()`, [newVersion], cb) ;
-            }) ;
-            job.async(done) ;
-        }, callback) ;
+        }
+        job.push((cb)=>{
+            this.query(`UPDATE ${DB_VERSION_TABLE} SET version = $1, last_update = now()`, [newVersion], cb) ;
+        }) ;
+        job.async(callback) ;
     }
 
 
@@ -707,7 +705,7 @@ class VeloxDbPgClient {
             
             var timeoutId = null;
             if(timeout > 0){
-                timeoutId = setTimeout(function(){
+                timeoutId = setTimeout(()=>{
                     if(!finished){
                         //if the transaction is not closed, do rollback
                         this.connection.query("ROLLBACK", (err)=>{

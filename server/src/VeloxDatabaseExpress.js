@@ -1,12 +1,58 @@
 const url = require('url');
 
 class VeloxDatabaseExpress {
+     /**
+     * @typedef VeloxDatabaseOptions
+     * @type {object}
+     * @property {string} [dbEntryPoint] database entry point (default : /api)
+     */
+
     /**
      * Create the Velox Database Express middleware
-     * @param {VeloxDatabase} db 
+     * 
+     * @param {VeloxDatabase} db database instance
+     * @param {VeloxDatabaseOptions} [options] configuration options 
      */
-    constructor(db){
+    constructor(db, options){
         this.db = db ;
+
+        this.options = options?JSON.parse(JSON.stringify(options)):{} ;
+
+        if(!this.options.dbEntryPoint){
+            this.options.dbEntryPoint = "/api" ;
+        }
+
+        if(this.db.expressExtensionsProto){
+            Object.keys(this.db.expressExtensionsProto).forEach((k)=>{
+                this[k] = this.db.expressExtensionsProto[k].bind(this) ;
+            }) ;
+        }
+    }
+
+   
+
+    /**
+     * Configure the express app
+     * 
+     * It add body-parser middleware and register database api endpoint
+     * to the VeloxDatabaseOptions#dbEntryPoint (default '/api')
+     * 
+     * other automatic configuration can came from extensions
+     * 
+     * @param {object} app express app object
+     */
+    configureExpress(app){
+        const bodyParser = require('body-parser');
+        app.use(bodyParser.json()) ;
+        app.use(bodyParser.urlencoded({extended: true}));
+
+        if(this.db.expressExtensionsConfigure){
+            this.db.expressExtensionsConfigure.forEach((c)=>{
+                c.bind(this)(app) ;
+            }) ;
+        }
+
+        app.use(this.options.dbEntryPoint, this.middleware()) ;
     }
 
     /**

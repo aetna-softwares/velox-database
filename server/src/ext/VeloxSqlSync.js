@@ -1,4 +1,4 @@
-const AsyncJob = require("../../../../helpers/AsyncJob") ;
+const AsyncJob = require("velox-commons/AsyncJob") ;
 const VeloxSqlModifTracker = require("./VeloxSqlModifTracker");
 const VeloxSqlDeleteTracker = require("./VeloxSqlDeleteTracker");
 /**
