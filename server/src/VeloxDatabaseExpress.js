@@ -48,7 +48,7 @@ class VeloxDatabaseExpress {
 
         if(this.db.expressExtensionsConfigure){
             this.db.expressExtensionsConfigure.forEach((c)=>{
-                c.bind(this)(app) ;
+                c.bind(this)(app, this.options) ;
             }) ;
         }
 

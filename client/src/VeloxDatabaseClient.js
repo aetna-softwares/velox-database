@@ -1,15 +1,19 @@
 ; (function (global, factory) {
-        typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
-        typeof define === 'function' && define.amd ? define(factory) :
+        if (typeof exports === 'object' && typeof module !== 'undefined') {
+        module.exports = factory() ;
+    } else if (typeof define === 'function' && define.amd) {
+        define([], factory);
+    } else {
         global.VeloxDatabaseClient = factory() ;
+        global.VeloxServiceClient.registerExtension(new global.VeloxDatabaseClient());
+    }
 }(this, (function () { 'use strict';
 
 
     /**
      * @typedef VeloxDatabaseClientOptions
      * @type {object}
-     * @property {string} serverUrl Server end point URL
-     * @property {function} xhrPrepare function that receive the XHR object to customize it if needed
+     * @property {string} [dbEntryPoint] base db entry point (default : api)
      */
 
     /**
@@ -19,20 +23,7 @@
      * 
      * @param {VeloxDatabaseClientOptions} options database client options
      */
-    function VeloxDatabaseClient(options) {
-        if(!options || typeof(options) !== "object"){
-            throw "VeloxDatabaseClient missing options" ;
-        }
-        this.options = JSON.parse(JSON.stringify(options))  ;
-        if(!this.options.serverUrl){
-            throw "VeloxDatabaseClient missing option serverUrl" ;
-        }
-
-        if(this.options.serverUrl[this.options.serverUrl.length-1] !== "/"){
-            //add trailing slash
-            this.options.serverUrl+"/" ;
-        }
-
+    function VeloxDatabaseClient() {
         var self = this ;
         VeloxDatabaseClient.extensions.forEach(function(extension){
             if(extension.extendsObj){
@@ -40,57 +31,90 @@
                         self[key] = extension.extendsObj[key];
                 });
             }
-        })
+        }) ;
     }
 
-    /**
-     * Perform ajax call
-     * 
-     * @private
-     * @param {string} url the url to call
-     * @param {string} method the HTTP method
-     * @param {object} data the parameters to send
-     * @param {function(Error, *)} callback called with error or result
-     */
-    VeloxDatabaseClient.prototype._ajax = function (url, method, data, callback) {
-        var xhr = new XMLHttpRequest();
-        if(method === "GET" && data){
-            var querystring = [] ;
-            Object.keys(data).forEach(function(k){
-                querystring.push(k+"="+encodeURIComponent(JSON.stringify(data[k]))) ;
-            }) ;
-            url = url+"?"+querystring.join("&") ;
+    VeloxDatabaseClient.prototype.init = function(client, callback){
+        this.client = client ;
+        this.dbEntryPoint = client.options.dbEntryPoint || "api/" ;
+         if(this.dbEntryPoint[this.dbEntryPoint.length-1] !== "/"){
+            //add trailing slash
+            this.dbEntryPoint = this.dbEntryPoint+"/" ;
         }
-        
-        xhr.open(method, url);
-        xhr.setRequestHeader("Content-type", "application/json");
+        client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){
+            if(err){ 
+                if(err == "401"){
+                    err = "Access to schema required login, you should set /"+this.dbEntryPoint+"schema as public resources" ; 
+                }
+                return callback(err) ;
+            }
+            this.schema = schema;
 
-        xhr.onreadystatechange = (function () {
-            
-            if (xhr.readyState === 4){
-                var responseResult = xhr.responseText ;
-                if(responseResult){
-                    try{
-                        responseResult = JSON.parse(responseResult) ;
-                    }catch(e){}
+            //add db api entry
+            var dbApi = {} ;
+            var dbApiPath = this.dbEntryPoint.split("/").filter(function(p){ return !!p.trim() ;}) ;
+            var currentParent = client;
+            dbApiPath.forEach(function(p, i){
+                if(i<dbApiPath.length-1){
+                    if(!currentParent[p]){
+                        currentParent[p] = {} ;
+                    }
+                }else{
+                    currentParent[p] = dbApi ;
                 }
-                if(xhr.status >= 200 && xhr.status < 300) {
-                    callback(null, responseResult);
-                } else {
-                    callback(responseResult||xhr.status);
+            }) ;
+
+            //add sub api entry for each table
+            Object.keys(schema).forEach(function(table){
+                dbApi[table] = {} ;
+
+                dbApi[table].insert = function(record, callback){
+                    this.insert(table, record, callback) ;
+                }.bind(this) ;
+                dbApi[table].update = function(record, callback){
+                    this.update(table, record, callback) ;
+                }.bind(this) ;
+                dbApi[table].remove = function(pkOrRecord, callback){
+                    this.remove(table, pkOrRecord, callback) ;
+                }.bind(this) ;
+                dbApi[table].getByPk = function(pkOrRecord, callback){
+                    this.getByPk(table, pkOrRecord, callback) ;
+                }.bind(this) ;
+                dbApi[table].search = function(search, orderBy, offset, limit, callback){
+                    this.search(table, search, orderBy, offset, limit, callback) ;
+                }.bind(this) ;
+                dbApi[table].searchFirst = function(search, orderBy, callback){
+                    this.searchFirst(table, search, orderBy, callback) ;
+                }.bind(this) ;
+            }.bind(this)) ;
+
+            //add global features
+            dbApi.transactionalChanges = function(changeSet, callback){
+                this.transactionalChanges(changeSet, callback) ;
+            }.bind(this) ;
+            dbApi.multiread = function(reads, callback){
+                this.multiread(reads, callback) ;
+            }.bind(this) ;
+            dbApi.getSchema = dbApi.schema = function( callback){
+                this.getSchema( callback) ;
+            }.bind(this) ;
+
+            //add extension features
+            VeloxDatabaseClient.extensions.forEach(function(extension){
+                if (extension.extendsProto) {
+                    Object.keys(extension.extendsProto).forEach(function (key) {
+                        dbApi.getSchema = function(){
+                            var args = Array.prototype.slice.call(arguments) ;
+                            this[key].apply(this, args) ;
+                        }.bind(this) ;
+                    });
                 }
-            } 
-        }).bind(this);
-        if(this.options.xhrPrepare){
-            this.options.xhrPrepare(xhr) ;
-        }
-        if(method === "POST" || method === "PUT"){
-            xhr.setRequestHeader("Content-type", "application/json");
-            xhr.send(JSON.stringify(data));
-        } else {
-            xhr.send();
-        }
+            });
+
+            callback() ;
+        }.bind(this)) ;
     } ;
+
 
     /**
      * get database schema if not yet retrieved
@@ -103,7 +127,7 @@
             return callback() ;
         }
         //don't know schema yet, get it
-        this._ajax(this.options.serverUrl+"schema", "GET", null, function(err, schema){
+        this.client.ajax(this.dbEntryPoint+"schema", "GET", null, function(err, schema){
             if(err){ return callback(err) ;}
             this.schema = schema ;
             callback() ;
@@ -157,7 +181,7 @@
     VeloxDatabaseClient.prototype.insert = function(table, record, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+table, "POST", record, callback) ;
+            this.client.ajax(this.dbEntryPoint+table, "POST", record, callback) ;
         }.bind(this)) ;
     };
 
@@ -171,7 +195,7 @@
     VeloxDatabaseClient.prototype.update = function(table, record, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+table+"/"+this._createPk(table,record), 
+            this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table,record), 
                 "PUT", record, callback) ;    
         }.bind(this)) ;
     };
@@ -186,7 +210,7 @@
     VeloxDatabaseClient.prototype.remove = function(table, pkOrRecord, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+table+"/"+this._createPk(table, pkOrRecord), 
+            this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table, pkOrRecord), 
                 "DELETE", null, callback) ;    
         }.bind(this)) ;
     };
@@ -217,7 +241,7 @@
     VeloxDatabaseClient.prototype.transactionalChanges = function(changeSet, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+"transactionalChanges", "POST", changeSet, callback) ;    
+            this.client.ajax(this.dbEntryPoint+"transactionalChanges", "POST", changeSet, callback) ;    
         }.bind(this)) ;
     };
 
@@ -241,7 +265,7 @@
     VeloxDatabaseClient.prototype.getByPk = function(table, pkOrRecord, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+table+"/"+this._createPk(table, pkOrRecord),
+            this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table, pkOrRecord),
                  "GET", null, callback) ;    
         }.bind(this)) ;
     };
@@ -284,7 +308,7 @@
 
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+table, "GET", { 
+            this.client.ajax(this.dbEntryPoint+table, "GET", { 
                 search : {
                     conditions: search,
                     orderBy : orderBy,
@@ -322,7 +346,7 @@
         }
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+table, "GET", {
+            this.client.ajax(this.dbEntryPoint+table, "GET", {
                 searchFirst:  {
                     conditions: search,
                     orderBy : orderBy
@@ -356,7 +380,7 @@
     VeloxDatabaseClient.prototype.multiread = function(reads, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this._ajax(this.options.serverUrl+"multiread", "POST", {
+            this.client.ajax(this.dbEntryPoint+"multiread", "POST", {
                 reads
             }, callback) ;    
         }.bind(this)) ;
@@ -386,7 +410,7 @@
 
             if (extension.extendsProto) {
                 Object.keys(extension.extendsProto).forEach(function (key) {
-              L          VeloxDatabaseClient.prototype[key] = extension.extendsProto[key];
+                        VeloxDatabaseClient.prototype[key] = extension.extendsProto[key];
                 });
             }
             if (extension.extendsGlobal) {

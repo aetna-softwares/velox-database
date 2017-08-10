@@ -57,7 +57,7 @@ class VeloxUserManagment{
      * @property {string} [passwordField] the password field name in login form (default : password)
      * @property {string} [realmField] the realm field name in login form (default : realm)
      * @property {string} [authEndPoint] the login authentication end point (default : "/auth")
-     * @property {string} [logoutEndPoint] the login authentication end point (default : "/auth")
+     * @property {string} [logoutEndPoint] the logout end point (default : "/logout")
      * @property {object} [sessionOptions] custom options for express-session
      * @property {object} [sessionCheck] option for session check
      */
@@ -178,8 +178,9 @@ class VeloxUserManagment{
              * { checkUrl: function(logged, url, user){...}} //custom check
              * 
              * @param {object} options the session check option (see examples)
+             * @param {object} globalDatabaseOptions the global database options (the one passed to VeloxDatabase object)
              */
-            getSessionCheckMiddleware: function(options){
+            getSessionCheckMiddleware: function(options, globalDatabaseOptions){
                 //this is the VeloxDatabaseExpress object
                 if(!options){
                     options = {} ;
@@ -258,12 +259,19 @@ class VeloxUserManagment{
                 }
 
                 return function(req, res, next){
-                    if(req.url.indexOf(globalOptions.authEndPoint||"/auth") === 0){
+                    if(req.url.indexOf(globalOptions.authEndPoint || "/auth") === 0){
                         return next(); //always accept auth endpoint
                     }
-                    if(req.url.indexOf(globalOptions.logoutEndPoint||"/logout") === 0){
+                    if(req.url.indexOf(globalOptions.logoutEndPoint|| "/logout") === 0){
                         return next(); //always accept logout endpoint
                     }
+
+                    if(!options.makeSchemaPrivate){
+                        if(req.url.indexOf(globalDatabaseOptions.dbEntryPoint+"/schema") === 0){
+                            return next(); //always accept logout endpoint
+                        }
+                    }
+                    
 
                     if(!checkUrl(req.isAuthenticated(), req.url, req.user)){
                         return res.status(401).end();
@@ -275,7 +283,7 @@ class VeloxUserManagment{
         } ;
 
         this.extendsExpressConfigure = [
-            function(app){
+            function(app, globalDatabaseOptions){
                 //this is the VeloxDatabaseExpress object
 
                 var sessionOptions = {secret: options.sessionSecret} ;
@@ -302,7 +310,7 @@ class VeloxUserManagment{
                     realmField : options.realmField,
                 }) ;
 
-                app.use(this.getSessionCheckMiddleware(options.sessionCheck)) ;
+                app.use(this.getSessionCheckMiddleware(options.sessionCheck, globalDatabaseOptions)) ;
                 
 
                 app.post(options.authEndPoint || "/auth",
