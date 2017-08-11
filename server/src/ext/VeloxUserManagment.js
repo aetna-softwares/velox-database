@@ -76,11 +76,20 @@ class VeloxUserManagment{
         this.userMeta = options.userMeta || [] ;
         this.profileMeta = options.profileMeta || [] ;
         this.dontCreateAdmin = options.dontCreateAdmin || false ;
+        this.fixedProfiles = options.fixedProfiles || null ;
         this.adminProfile = options.adminProfile || null ;
         this.adminUser = options.adminUser || {login: "admin", password: "admin", name: "Administrator", auth_type: "password"} ;
 
         if(this.adminProfile){
-            this.adminUser.profile_code = this.adminProfile.code ;
+            if(typeof(this.adminProfile) === "string"){
+                //just give the code, profile should be in fixedProfile list
+                if(!this.fixedProfiles || !this.fixedProfiles.some(function(p){ return p.code === this.adminProfile ; }.bind(this))){
+                    throw "You give a adminProfile code but this code is no where in fixedProfiles option." ;
+                }
+                this.adminUser.profile_code = this.adminProfile ;
+            }else{
+                this.adminUser.profile_code = this.adminProfile.code ;
+            }
         }
         if(!this.adminUser.uid){
             this.adminUser.uid = uuid.v4() ;
@@ -472,15 +481,30 @@ class VeloxUserManagment{
             sql: this.getCreateTableSession(backend)
         }) ;
 
-
-        if(!this.dontCreateAdmin){ 
-            if(this.adminProfile){
+        if(this.fixedProfiles){
+            for(let profile of this.fixedProfiles){
                 changes.push({
                     run: (tx, cb)=>{
-                        tx.searchFirst("velox_user_profile", {login: this.adminProfile.code}, (err, adminProfile)=>{
+                        tx.searchFirst("velox_user_profile", {code: profile.code}, (err, existingProfile)=>{
+                            if(err){ return cb(err); }
+                            if(existingProfile){
+                                return tx.update("velox_user_profile", profile, cb) ;
+                            }
+                            tx.insert("velox_user_profile", profile, cb) ;
+                        }) ;
+                    }
+                }) ;
+            }
+        }
+
+        if(!this.dontCreateAdmin){ 
+            if(this.adminProfile && typeof(this.adminProfile) === "object"){
+                changes.push({
+                    run: (tx, cb)=>{
+                        tx.searchFirst("velox_user_profile", {code: this.adminProfile.code}, (err, adminProfile)=>{
                             if(err){ return cb(err); }
                             if(adminProfile){
-                                return cb() ;
+                                return tx.update("velox_user_profile", this.adminProfile, cb) ;
                             }
                             tx.insert("velox_user_profile", this.adminProfile, cb) ;
                         }) ;
@@ -493,7 +517,8 @@ class VeloxUserManagment{
                     tx.searchFirst("velox_user", {login: this.adminUser.login}, (err, adminUser)=>{
                         if(err){ return cb(err); }
                         if(adminUser){
-                            return cb() ;
+                            //update only the profile, other information may have been change by user
+                            return tx.update("velox_user", {uid: adminUser.uid, profile_code: this.adminUser.profile_code}, cb) ;
                         }
                         tx.insert("velox_user", this.adminUser, cb) ;
                     }) ;
@@ -516,6 +541,7 @@ class VeloxUserManagment{
         }) ;
         let lines = [
             "code VARCHAR(30) PRIMARY KEY",
+            "level INT",
             "name VARCHAR(75)"
         ].concat(metaLines) ;
         if(backend === "pg"){
