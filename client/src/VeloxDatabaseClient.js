@@ -34,6 +34,8 @@
         }) ;
     }
 
+
+
     VeloxDatabaseClient.prototype.init = function(client, callback){
         this.client = client ;
         this.dbEntryPoint = client.options.dbEntryPoint || "api/" ;
@@ -63,6 +65,7 @@
                     currentParent[p] = dbApi ;
                 }
             }) ;
+            client.__velox_database = dbApi ;
 
             //add sub api entry for each table
             Object.keys(schema).forEach(function(table){
@@ -76,6 +79,9 @@
                 }.bind(this) ;
                 dbApi[table].remove = function(pkOrRecord, callback){
                     this.remove(table, pkOrRecord, callback) ;
+                }.bind(this) ;
+                dbApi[table].getPk = function(record, callback){
+                    this.getPk(table, record, callback) ;
                 }.bind(this) ;
                 dbApi[table].getByPk = function(pkOrRecord, callback){
                     this.getByPk(table, pkOrRecord, callback) ;
@@ -156,8 +162,32 @@
             }
             return record;
         }
-        
     } ;
+
+    VeloxDatabaseClient.prototype.getPk = function(table, record, callback){
+        this._checkSchema(function(err){
+            if(err){ return callback(err); }
+            var pkDef = this.schema[table].pk ;
+            if(pkDef.length === 1){
+                if(typeof(record) !== "object"){
+                    //assume it is already the pk
+                    return callback(null, record) ;    
+                }else{
+                    return callback(null, record[pkDef[0]]) ;
+                }
+            }else{
+                if(typeof(record) !== "object"){
+                    throw "The PK is composed of many columns, an object with each column is expected. Received : "+record ;
+                }
+                var pk = {};
+                pkDef.forEach(function(p){
+                    pk[p] = record[p] ;
+                }) ;
+                return callback(null, pk) ;
+            }
+        }.bind(this)) ;
+    } ;
+
 
     /**
      * Get the schema of the database
