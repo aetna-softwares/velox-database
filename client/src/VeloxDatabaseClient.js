@@ -133,7 +133,7 @@
             return callback() ;
         }
         //don't know schema yet, get it
-        this.client.ajax(this.dbEntryPoint+"schema", "GET", null, function(err, schema){
+        this.client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){
             if(err){ return callback(err) ;}
             this.schema = schema ;
             callback() ;
@@ -211,7 +211,7 @@
     VeloxDatabaseClient.prototype.insert = function(table, record, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this.client.ajax(this.dbEntryPoint+table, "POST", record, callback) ;
+            this.client.ajax(this.dbEntryPoint+table, "POST", record, "json", callback) ;
         }.bind(this)) ;
     };
 
@@ -226,7 +226,7 @@
         this._checkSchema(function(err){
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table,record), 
-                "PUT", record, callback) ;    
+                "PUT", record, "json", callback) ;    
         }.bind(this)) ;
     };
 
@@ -241,7 +241,7 @@
         this._checkSchema(function(err){
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table, pkOrRecord), 
-                "DELETE", null, callback) ;    
+                "DELETE", null, "json", callback) ;    
         }.bind(this)) ;
     };
 
@@ -271,7 +271,7 @@
     VeloxDatabaseClient.prototype.transactionalChanges = function(changeSet, callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            this.client.ajax(this.dbEntryPoint+"transactionalChanges", "POST", changeSet, callback) ;    
+            this.client.ajax(this.dbEntryPoint+"transactionalChanges", "POST", changeSet, "json", callback) ;    
         }.bind(this)) ;
     };
 
@@ -296,7 +296,7 @@
         this._checkSchema(function(err){
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table, pkOrRecord),
-                 "GET", null, callback) ;    
+                 "GET", null, "json", callback) ;    
         }.bind(this)) ;
     };
 
@@ -345,7 +345,7 @@
                     offset: offset,
                     limit: limit
                 }
-            }, callback) ;    
+            }, "json", callback) ;    
         }.bind(this)) ;
         
     };
@@ -381,7 +381,7 @@
                     conditions: search,
                     orderBy : orderBy
                 }
-            }, callback) ;    
+            }, "json", callback) ;    
         }.bind(this)) ;
         
     };
@@ -412,7 +412,7 @@
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+"multiread", "POST", {
                 reads
-            }, callback) ;    
+            }, "json",callback) ;    
         }.bind(this)) ;
         
     };
