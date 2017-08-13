@@ -117,6 +117,18 @@ class VeloxDbPgClient {
     }
 
     /**
+     * @typedef VeloxDatabaseJoinFetch
+     * @type {object}
+     * @property {string} otherTable other table name
+     * @property {string} [otherField] field in other table to make the join (if not given, will try to rely on the foreing keys)
+     * @property {string} [thisTable] the starting table for the join (default : the current table)
+     * @property {string} [thisField] field in starting table to make the join (if not given, will try to rely on the foreing keys)
+     * @property {string} [type] type of join fetching : 2one for a single result, 2many for many result (default : 2one)
+     * @property {string} [name] name of the join, will be the name of the property holding the result (default : otherTable name)
+     * @property {boolean} [onlyMatches] return only record with matching join, if false, it does a LEFT JOIN (default : false)
+     */
+
+    /**
      * Get a record in the table by its pk
      * 
      * @example
@@ -131,47 +143,189 @@ class VeloxDbPgClient {
      * 
      * @param {string} table the table name
      * @param {any|object} pk the pk value. can be an object containing each value for composed keys
+     * @param {VeloxDatabaseJoinFetch} joinFetch join fetch from other sub tables
      * @param {function(Error,object)} callback called with result. give null if not found
      */
-    getByPk(table, pk, callback){
-        this.getPrimaryKey(table, (err, pkColumns)=>{
+    getByPk(table, pk, joinFetch, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+        }
+        this.getSchema(table, (err, schema)=>{
             if(err){ return callback(err); }
 
-            if(pkColumns.length === 0){
-                return callback("Error searching in table "+table+", no primary column for this table") ;
-            }
+            this.getPrimaryKey(table, (err, pkColumns)=>{
+                if(err){ return callback(err); }
 
-            //check given pk is consistent with table pk
-            if(typeof(pk) === "object"){
-                //the given pk has the form {col1: "", col2: ""}
-                if(Object.keys(pk).length < pkColumns.length){
-                    return callback("Error searching in table "+table+", the given PK has "+Object.keys(pk).length+" properties but PK has "+pkColumns.length) ;
+                if(pkColumns.length === 0){
+                    return callback("Error searching in table "+table+", no primary column for this table") ;
                 }
-                for(let k of pkColumns){
-                    if(Object.keys(pk).indexOf(k) === -1){
-                        return callback("Error searching in table "+table+", the given PK miss "+k+" property") ;
+
+                //check given pk is consistent with table pk
+                if(typeof(pk) === "object"){
+                    //the given pk has the form {col1: "", col2: ""}
+                    if(Object.keys(pk).length < pkColumns.length){
+                        return callback("Error searching in table "+table+", the given PK has "+Object.keys(pk).length+" properties but PK has "+pkColumns.length) ;
+                    }
+                    for(let k of pkColumns){
+                        if(Object.keys(pk).indexOf(k) === -1){
+                            return callback("Error searching in table "+table+", the given PK miss "+k+" property") ;
+                        }
+                    }
+                }else{
+                    //the given pk is a simple value, assuming simple PK form
+                    if(pkColumns.length > 1){
+                        return callback("Error searching in table "+table+", the primary key should be composed of "+pkColumns.join(", "));
+                    }
+                    let formatedPk = {} ;
+                    formatedPk[pkColumns[0]] = pk ;
+                    pk = formatedPk ;
+                }
+
+                let select = ["t.*"] ;
+                let where = [] ;
+                let params = [] ;
+                let from = [`${table} t`] ;
+                let aliases = {};
+                aliases[table] = "t" ;
+                if(joinFetch){
+                    for(let join of joinFetch){
+                        let j = "";
+                        if(join.onlyMatches){
+                            j += " JOIN" ;
+                        }else{
+                            j += " LEFT JOIN" ;
+                        }
+                        if(!schema[join.otherTable]){ return callback("Unknown table "+join.otherTable) ;}
+
+                        let alias = "t"+from.length ;
+                        aliases[join.otherTable] = alias ;
+                        j += " "+join.otherTable+" "+alias ;
+
+                        let otherField = join.otherField ;
+                        if(otherField){
+                            if(!schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
+                                return callback("Unknown columns "+join.otherTable+"."+otherField) ;
+                            }
+                        }
+                        
+                        let thisTable = join.thisTable||table;
+                        if(join.thisTable){
+                            if(!schema[join.thisTable]){ return callback("Unknown table "+join.thisTable) ;}
+                        }
+                        let thisField = join.thisField;
+                        if(thisField){
+                            if(!schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
+                                return callback("Unknown columns "+thisTable+"."+thisField) ;
+                            }
+                        }
+
+                        if(otherField && !thisField || !otherField && thisField){ return callback("You must set both otherField and thisField") ; }
+
+                        if(otherField && thisField){
+                            j += " ON "+aliases[join.otherTable]+"."+otherField+" = "+aliases[thisTable]+"."+thisField ;
+                        }else{
+                            if(!otherField){
+                                //assuming using FK
+
+                                let pairs = {} ;
+
+                                //look in this table FK
+                                for(let fk of schema[thisTable].fk){
+                                    if(fk.targetTable === join.otherTable){
+                                        pairs[aliases[thisTable]+"."+fk.thisColumn] = aliases[join.otherTable]+"."+fk.targetColumn ;
+                                    }
+                                }
+
+                                if(Object.keys(pairs).length === 0){
+                                    //look in other table FK
+                                    for(let fk of schema[join.otherTable].fk){
+                                        if(fk.targetTable === thisTable){
+                                            pairs[aliases[join.otherTable]+"."+fk.thisColumn] = aliases[thisTable]+"."+fk.targetColumn ;
+                                        }
+                                    }
+                                }
+
+                                if(Object.keys(pairs).length === 0){
+                                    return callback("No otherField/thisField given and can't find in FK") ;
+                                }
+
+                                for(let left of Object.keys(pairs)){
+                                    j += " ON "+left+" = "+pairs[left] ;
+                                }
+                            }
+                        }
+
+                        for(let col of schema[join.otherTable].columns){
+                            select.push(alias+"."+col.name+" AS "+alias+"_"+col.name) ;
+                        }
+
+                        from.push(j) ;
                     }
                 }
-            }else{
-                //the given pk is a simple value, assuming simple PK form
-                if(pkColumns.length > 1){
-                    return callback("Error searching in table "+table+", the primary key should be composed of "+pkColumns.join(", "));
+
+                for(let k of pkColumns){
+                    params.push(pk[k]) ;
+                    where.push(k+" = $"+params.length) ;
                 }
-                let formatedPk = {} ;
-                formatedPk[pkColumns[0]] = pk ;
-                pk = formatedPk ;
-            }
 
-            let where = [] ;
-            let params = [] ;
-            for(let k of pkColumns){
-                params.push(pk[k]) ;
-                where.push(k+" = $"+params.length) ;
-            }
+                let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
 
-            let sql = `SELECT * FROM ${table} WHERE ${where.join(" AND ")}` ;
+                this.query(sql, params, function(err, results){
+                    if(err){ return callback(err) ;}
+                    if(results.rows.length === 0){ return callback(null, null); }
+                    if(!joinFetch){ return callback(null, results.rows[0]); }
 
-            this.queryFirst(sql, params, callback) ;
+                    //need some aggregate from joins
+                    var record = {} ;
+                    for(let col of schema[table].columns){
+                        record[col.name] = results.rows[0][col.name] ;
+                    }
+                    
+                    for(let join of joinFetch){
+                        let joinType = join.type || "2one" ;
+                        let name = join.name || join.otherTable ;
+                        if(joinType === "2one"){
+                            record[name] = {} ;
+                            var pkIsNull = false;
+                            if(schema[join.otherTable].pk.every((pk)=>{
+                                return !results.rows[0][aliases[join.otherTable]+"_"+pk] ;
+                            })){
+                              pkIsNull = true ;  
+                            }
+                            if(pkIsNull){
+                                record[name] = null ;
+                            } else {
+                                for(let col of schema[join.otherTable].columns){
+                                    record[name][col.name] = results.rows[0][aliases[join.otherTable]+"_"+col.name] ;
+                                }
+                            }
+                        }else if(joinType === "2many"){
+                            record[name] = [] ;
+                            for(let r of results.rows){
+                                var pkIsNull = false;
+                                if(schema[join.otherTable].pk.every((pk)=>{
+                                    return !r[aliases[join.otherTable]+"_"+pk] ;
+                                })){
+                                    pkIsNull = true ;  
+                                }
+                                if(!pkIsNull){
+                                    let otherRecord = {} ;
+                                    for(let col of schema[join.otherTable].columns){
+                                        otherRecord[col.name] = r[aliases[join.otherTable]+"_"+col.name] ;
+                                    }
+                                    record[name].push(otherRecord) ;
+                                }
+                            }
+                        }else{
+                            callback("Unknown join type "+joinType+", expected 2one or 2many") ;
+                        }
+                    }
+
+                    callback(null, record) ;
+
+                }) ;
+            }) ;
         }) ;
     }
 
@@ -536,7 +690,8 @@ class VeloxDbPgClient {
                 if(!table){
                     table = {
                         columns: [],
-                        pk: []
+                        pk: [],
+                        fk: []
                     } ;
                     schema[r.table_name] = table;
                 }
@@ -568,8 +723,34 @@ class VeloxDbPgClient {
                         }
                     }
 
-                    this.schema = schema ;
-                    callback(null, schema) ;
+                    this.query( `
+                            select kc.column_name , tc.table_name, ccu.table_name AS foreign_table_name,
+                                ccu.column_name AS foreign_column_name 
+                            from  
+                                information_schema.table_constraints tc
+                                JOIN information_schema.key_column_usage kc ON kc.table_name = tc.table_name and kc.table_schema = tc.table_schema
+                                and kc.constraint_name = tc.constraint_name
+                                JOIN information_schema.constraint_column_usage AS ccu
+                                ON ccu.constraint_name = tc.constraint_name
+                            where 
+                                tc.constraint_type = 'FOREIGN KEY' 
+                            order by tc.table_name, ordinal_position
+                    `, [], (err, results)=>{
+                            if(err){ return callback(err); }
+                            for(let r of results.rows){
+                                let table = schema[r.table_name] ;
+                                if(table){
+                                    table.fk.push({
+                                        targetTable: r.foreign_table_name,
+                                        thisColumn: r.column_name,
+                                        targetColumn: r.foreign_column_name,
+                                    }) ;
+                                }
+                            }
+
+                            this.schema = schema ;
+                            callback(null, schema) ;
+                    }) ;
             }) ;
         }) ;
     }

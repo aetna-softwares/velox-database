@@ -83,8 +83,8 @@
                 dbApi[table].getPk = function(record, callback){
                     this.getPk(table, record, callback) ;
                 }.bind(this) ;
-                dbApi[table].getByPk = function(pkOrRecord, callback){
-                    this.getByPk(table, pkOrRecord, callback) ;
+                dbApi[table].getByPk = function(pkOrRecord, joinFetch, callback){
+                    this.getByPk(table, pkOrRecord, joinFetch, callback) ;
                 }.bind(this) ;
                 dbApi[table].search = function(search, orderBy, offset, limit, callback){
                     this.search(table, search, orderBy, offset, limit, callback) ;
@@ -292,11 +292,11 @@
      * @param {any|object} pkOrRecord the pk value. can be an object containing each value for composed keys
      * @param {function(Error,object)} callback called with result. give null if not found
      */
-    VeloxDatabaseClient.prototype.getByPk = function(table, pkOrRecord, callback){
+    VeloxDatabaseClient.prototype.getByPk = function(table, pkOrRecord, joinFetch,  callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table, pkOrRecord),
-                 "GET", null, "json", callback) ;    
+                 joinFetch?"POST":"GET", joinFetch, "json", callback) ;    
         }.bind(this)) ;
     };
 
