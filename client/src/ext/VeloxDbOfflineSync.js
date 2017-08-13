@@ -118,10 +118,10 @@
         }.bind(this));
     };
 
-    extension.extendsObj.getByPk = function (table, pkOrRecord, callback) {
+    extension.extendsObj.getByPk = function (table, pkOrRecord, joinFetch, callback) {
         prepare.bind(this)(function (err) {
             if (err) { return callback(err); }
-            storage.getByPk(table, pkOrRecord, callback);
+            storage.getByPk(table, pkOrRecord, joinFetch, callback);
         }.bind(this));
     };
 
@@ -522,11 +522,146 @@
         }
     };
 
-    VeloxDbOfflineLoki.prototype.getByPk = function (table, pkOrRecord, callback) {
+    VeloxDbOfflineLoki.prototype.getByPk = function (table, pkOrRecord, joinFetch, callback) {
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch ;
+            joinFetch = null;
+        }
         try {
             var record = this.getCollection(table).findOne(this._pkSearch(table, pkOrRecord));
             if (record) {
-                callback(null, this._sanatizeRecord(record));
+                record = this._sanatizeRecord(record) ;
+                if(joinFetch){
+                    var tablesValues = {} ;
+                    joinFetch.some(function(join){
+
+                        var searchJoin = null ;
+
+                        var thisTable = join.thisTable || table ;
+                        if(join.thisTable){
+                            if(!this.schema[join.thisTable]){ return callback("Unknown table "+join.thisTable) ;}
+                        }
+                        var thisField = join.thisField ;
+                        if(thisField){
+                            if(!this.schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
+                                return callback("Unknown columns "+thisTable+"."+thisField) ;
+                            }
+                        }
+                        var otherField = join.otherField ;
+                        if(otherField){
+                            if(!this.schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
+                                return callback("Unknown columns "+join.otherTable+"."+otherField) ;
+                            }
+                        }
+
+                        if(otherField && !thisField || !otherField && thisField){ return callback("You must set both otherField and thisField") ; }
+
+                        var pairs = {} ;
+                        if(!otherField){
+                            //assuming using FK
+
+                            //look in this table FK
+                            this.schema[thisTable].fk.forEach(function(fk){
+                                if(fk.targetTable === join.otherTable){
+                                    pairs[fk.thisColumn] = fk.targetColumn ;
+                                }
+                            }.bind(this));
+                            
+                            if(Object.keys(pairs).length === 0){
+                                //look in other table FK
+                                this.schema[join.otherTable].fk.forEach(function(fk){
+                                    if(fk.targetTable === thisTable){
+                                        pairs[fk.targetColumn] = fk.thisColumn ;
+                                    }
+                                }) ;
+                            }
+
+                            if(Object.keys(pairs).length === 0){
+                                return callback("No otherField/thisField given and can't find in FK") ;
+                            }
+                        }else{
+                            pairs[thisField] = otherField ;
+                        }
+
+                        if(thisTable === table){
+                            searchJoin = {} ;
+                            Object.keys(pairs).forEach(function(f){
+                                searchJoin[f] = record[pairs[f]] ;
+                            }) ;
+                        }else{
+                            if(!tablesValues[thisTable]){
+                                return callback("Can't find "+thisTable+" in join chaining") ;
+                            }
+                            if(!Array.isArray(tablesValues[thisTable])){
+                                searchJoin = {} ;
+                                Object.keys(pairs).forEach(function(f){
+                                    searchJoin[f] = tablesValues[thisTable][pairs[f]] ;
+                                }) ;
+                            }else{
+                                searchJoin = [] ;
+                                tablesValues[thisTable].forEach(function(r){
+                                    var s = {};
+                                    Object.keys(pairs).forEach(function(f){
+                                        s[f] = r[pairs[f]] ;
+                                    }) ;
+                                    searchJoin.push(s) ;
+                                }) ;
+                            }
+                        }
+
+                        var addTableValue = function(otherTable, otherRecord){
+                                if(!otherRecord){ return ; }
+                                if(!tablesValues[otherTable]){
+                                    tablesValues[otherTable] = otherRecord ;
+                                }else{
+                                    if(Array.isArray(tablesValues[otherTable])){
+                                        if(Array.isArray(otherRecord)){
+                                            tablesValues[otherTable] = tablesValues[otherTable].concat(otherRecord) ;    
+                                        }else{
+                                            tablesValues[otherTable].push(otherRecord) ;
+                                        }
+                                    }else{
+                                        if(Array.isArray(otherRecord)){
+                                            tablesValues[otherTable] = [tablesValues[otherTable]].concat(otherRecord) ;    
+                                        }else{
+                                            tablesValues[otherTable] = [tablesValues[otherTable], otherRecord] ;
+                                        }
+                                    }
+                                }
+                        } ;
+
+                        var type = join.type || "2one" ;
+                        var searchFunc = null;
+                        if(type === "2one"){
+                            searchFunc = "findOne" ;
+                        }else if(type === "2many"){
+                            searchFunc = "find" ;
+                        }else{
+                            return callback("Unknown join type "+type+", expected 2one or 2many") ;
+                        }
+                        //by default the record is to add on the main record we fetched
+                        var recordHolder = record;
+                        if(thisTable !== table){
+                            //the record is to put on a subrecord
+                            recordHolder = tablesValues[thisTable] ;
+                        }
+                        if(Array.isArray(recordHolder)){
+                            //the record holder has many values, we search for each of its value
+                            recordHolder.forEach(function(r, i){
+                                var otherRecord = this.getCollection(join.otherTable)[searchFunc](this._translateSearch(searchJoin[i])) ;
+                                recordHolder[i][join.name||join.otherTable] = otherRecord ;
+                                addTableValue(join.otherTable, otherRecord) ;
+                            }.bind(this));
+                        }else{
+                            //the record holder has only one value, we search for it
+                            var otherRecord = this.getCollection(join.otherTable)[searchFunc](this._translateSearch(searchJoin)) ;
+                            recordHolder[join.name||join.otherTable] = otherRecord ;
+                            addTableValue(join.otherTable, otherRecord) ;
+                        }
+                    }.join(this)) ;
+                }
+                
+                callback(null,record);
             } else {
                 callback(null, null);
             }

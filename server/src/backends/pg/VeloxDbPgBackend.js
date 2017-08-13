@@ -125,7 +125,6 @@ class VeloxDbPgClient {
      * @property {string} [thisField] field in starting table to make the join (if not given, will try to rely on the foreing keys)
      * @property {string} [type] type of join fetching : 2one for a single result, 2many for many result (default : 2one)
      * @property {string} [name] name of the join, will be the name of the property holding the result (default : otherTable name)
-     * @property {boolean} [onlyMatches] return only record with matching join, if false, it does a LEFT JOIN (default : false)
      */
 
     /**
@@ -151,7 +150,7 @@ class VeloxDbPgClient {
             callback = joinFetch;
             joinFetch = null;
         }
-        this.getSchema(table, (err, schema)=>{
+        this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
 
             this.getPrimaryKey(table, (err, pkColumns)=>{
@@ -191,11 +190,9 @@ class VeloxDbPgClient {
                 if(joinFetch){
                     for(let join of joinFetch){
                         let j = "";
-                        if(join.onlyMatches){
-                            j += " JOIN" ;
-                        }else{
-                            j += " LEFT JOIN" ;
-                        }
+                        
+                        j += " LEFT JOIN" ;
+                        
                         if(!schema[join.otherTable]){ return callback("Unknown table "+join.otherTable) ;}
 
                         let alias = "t"+from.length ;
@@ -288,7 +285,7 @@ class VeloxDbPgClient {
                         if(joinType === "2one"){
                             record[name] = {} ;
                             var pkIsNull = false;
-                            if(schema[join.otherTable].pk.every((pk)=>{
+                            if(schema[join.otherTable].pk.length > 0 && schema[join.otherTable].pk.every((pk)=>{
                                 return !results.rows[0][aliases[join.otherTable]+"_"+pk] ;
                             })){
                               pkIsNull = true ;  
@@ -304,7 +301,7 @@ class VeloxDbPgClient {
                             record[name] = [] ;
                             for(let r of results.rows){
                                 var pkIsNull = false;
-                                if(schema[join.otherTable].pk.every((pk)=>{
+                                if(schema[join.otherTable].pk.length > 0 && schema[join.otherTable].pk.every((pk)=>{
                                     return !r[aliases[join.otherTable]+"_"+pk] ;
                                 })){
                                     pkIsNull = true ;  

@@ -350,7 +350,7 @@ class VeloxDatabase {
                 let r = reads[k] ;
                 job.push((cb)=>{
                     if(r.pk){
-                        client.getByPk(r.table, r.pk, (err, record)=>{
+                        client.getByPk(r.table, r.pk, r.joinFetch, (err, record)=>{
                             if(err){ return cb(err); }
                             results[k] = record ;
                             cb() ;
@@ -721,7 +721,7 @@ class VeloxDatabaseClient {
      * @param {any|object} pk the pk value. can be an object containing each value for composed keys
      * @param {function(Error,object)} callback called with result. give null if not found
      */
-    getByPk(table, pk, callback){ callback("not implemented"); }
+    getByPk(table, pk, joinFetch, callback){ callback("not implemented"); }
 
 
     /**

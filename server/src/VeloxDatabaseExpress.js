@@ -192,7 +192,11 @@ class VeloxDatabaseExpress {
                                 return res.status(500).end("wrong pk, expected "+schema[table].pk.join(", ")) ;
                             }
                             this.db.inDatabase((client, done)=>{
-                                client.getByPk(table, pk, done) ;
+                                var joinFetch = null;
+                                if(req.query.joinFetch){
+                                    joinFetch = JSON.parse(req.query.joinFetch) ;
+                                }
+                                client.getByPk(table, pk, joinFetch, done) ;
                             }, (err, foundRecord)=>{
                                 if(err){ return res.status(500).end(this._formatErr(err)) ; }
                                 res.status(200).json(foundRecord) ;

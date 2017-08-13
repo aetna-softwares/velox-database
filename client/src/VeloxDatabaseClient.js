@@ -293,10 +293,14 @@
      * @param {function(Error,object)} callback called with result. give null if not found
      */
     VeloxDatabaseClient.prototype.getByPk = function(table, pkOrRecord, joinFetch,  callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+        }
         this._checkSchema(function(err){
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+table+"/"+this._createPk(table, pkOrRecord),
-                 joinFetch?"POST":"GET", joinFetch, "json", callback) ;    
+                  "GET",joinFetch?{joinFetch: joinFetch}:null, "json", callback) ;    
         }.bind(this)) ;
     };
 
