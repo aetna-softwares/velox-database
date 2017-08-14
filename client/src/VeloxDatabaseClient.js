@@ -86,11 +86,11 @@
                 dbApi[table].getByPk = function(pkOrRecord, joinFetch, callback){
                     this.getByPk(table, pkOrRecord, joinFetch, callback) ;
                 }.bind(this) ;
-                dbApi[table].search = function(search, orderBy, offset, limit, callback){
-                    this.search(table, search, orderBy, offset, limit, callback) ;
+                dbApi[table].search = function(search, joinFetch, orderBy, offset, limit, callback){
+                    this.search(table, search, joinFetch, orderBy, offset, limit, callback) ;
                 }.bind(this) ;
-                dbApi[table].searchFirst = function(search, orderBy, callback){
-                    this.searchFirst(table, search, orderBy, callback) ;
+                dbApi[table].searchFirst = function(search, joinFetch, orderBy, callback){
+                    this.searchFirst(table, search,joinFetch, orderBy, callback) ;
                 }.bind(this) ;
             }.bind(this)) ;
 
@@ -325,7 +325,21 @@
      * @param {number} [limit] limit, default is no limit
      * @param {function(Error, Array)} callback called on finished. give back the found records
      */
-    VeloxDatabaseClient.prototype.search = function(table, search, orderBy, offset, limit, callback){
+    VeloxDatabaseClient.prototype.search = function(table, search, joinFetch, orderBy, offset, limit, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+            orderBy = null;
+            offset = 0;
+            limit = null ;
+        } 
+        if(typeof(joinFetch) === "string"){
+            callback = limit;
+            limit = offset;
+            offset = orderBy;
+            orderBy = joinFetch;
+            joinFetch = null ;
+        } 
         if(typeof(orderBy) === "function"){
             callback = orderBy;
             orderBy = null;
@@ -345,6 +359,7 @@
             this.client.ajax(this.dbEntryPoint+table, "GET", { 
                 search : {
                     conditions: search,
+                    joinFetch: joinFetch,
                     orderBy : orderBy,
                     offset: offset,
                     limit: limit
@@ -373,7 +388,17 @@
      * @param {string} [orderBy] order by clause
      * @param {function(Error, Array)} callback called on finished. give back the first found records
      */
-    VeloxDatabaseClient.prototype.searchFirst = function(table, search, orderBy, callback){
+    VeloxDatabaseClient.prototype.searchFirst = function(table, search,joinFetch, orderBy, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+            orderBy = null;
+        }
+        if(typeof(joinFetch) === "string"){
+            callback = orderBy;
+            orderBy = joinFetch;
+            joinFetch = null;
+        }
         if(typeof(orderBy) === "function"){
             callback = orderBy;
             orderBy = null;
@@ -383,7 +408,8 @@
             this.client.ajax(this.dbEntryPoint+table, "GET", {
                 searchFirst:  {
                     conditions: search,
-                    orderBy : orderBy
+                    orderBy : orderBy,
+                    joinFetch: joinFetch
                 }
             }, "json", callback) ;    
         }.bind(this)) ;

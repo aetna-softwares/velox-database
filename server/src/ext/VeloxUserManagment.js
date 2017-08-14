@@ -611,7 +611,8 @@ class VeloxUserManagment{
             CREATE TABLE IF NOT EXISTS velox_link_user_realm (
                 user_uid VARCHAR(40) REFERENCES velox_user(uid),
                 realm_code VARCHAR(30) REFERENCES velox_user_realm(code),
-                profile_code VARCHAR(30) REFERENCES velox_user_profile(code)
+                profile_code VARCHAR(30) REFERENCES velox_user_profile(code),
+                PRIMARY KEY(user_uid, realm_code)
             )
             ` ;
         }

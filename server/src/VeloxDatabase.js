@@ -758,12 +758,13 @@ class VeloxDatabaseClient {
      * 
      * @param {string} table table name
      * @param {object} search search object
+     * @param {VeloxDatabaseJoinFetch} [joinFetch] join fetch from other sub tables
      * @param {string} [orderBy] order by clause
      * @param {number} [offset] offset, default is 0
      * @param {number} [limit] limit, default is no limit
      * @param {function(Error, Array)} callback called on finished. give back the found records
      */
-    search(table, search, orderBy, offset, limit, callback){ callback("not implemented"); }
+    search(table, search, joinFetch, orderBy, offset, limit, callback){ callback("not implemented"); }
 
     /**
      * Helpers to do simple search in table and return first found record
@@ -781,10 +782,11 @@ class VeloxDatabaseClient {
      * 
      * @param {string} table table name
      * @param {object} search search object
+     * @param {VeloxDatabaseJoinFetch} [joinFetch] join fetch from other sub tables
      * @param {string} [orderBy] order by clause
      * @param {function(Error, Array)} callback called on finished. give back the first found records
      */
-    searchFirst(table, search, orderBy, callback){ callback("not implemented"); }
+    searchFirst(table, search, joinFetch, orderBy, callback){ callback("not implemented"); }
 
     /**
      * Get the columns of a table. Give back an array of columns definition

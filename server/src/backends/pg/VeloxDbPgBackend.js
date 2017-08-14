@@ -206,36 +206,64 @@ class VeloxDbPgClient {
         } ;
     }
 
-    _aggregateJoinedResult(recordRows, joinFetch){
+    _aggregateJoinedResult(schema, table, recordRows, aliases, joinFetch){
         //need some aggregate from joins
         var record = {} ;
         for(let col of schema[table].columns){
-            record[col.name] = results.rows[0][col.name] ;
+            record[col.name] = recordRows[0][col.name] ;
         }
-        
-        for(let join of joinFetch){
-            let joinType = join.type || "2one" ;
-            let name = join.name || join.otherTable ;
-            if(joinType === "2one"){
-                record[name] = {} ;
-                var pkIsNull = false;
-                if(schema[join.otherTable].pk.length > 0 && schema[join.otherTable].pk.every((pk)=>{
-                    return !results.rows[0][aliases[join.otherTable]+"_"+pk] ;
-                })){
-                    pkIsNull = true ;  
-                }
-                if(pkIsNull){
-                    record[name] = null ;
-                } else {
-                    for(let col of schema[join.otherTable].columns){
-                        record[name][col.name] = results.rows[0][aliases[join.otherTable]+"_"+col.name] ;
+
+        var tablesValues = {} ;
+         var addTableValue = function(otherTable, otherRecord){
+                if(!otherRecord){ return ; }
+                if(!tablesValues[otherTable]){
+                    tablesValues[otherTable] = otherRecord ;
+                }else{
+                    if(Array.isArray(tablesValues[otherTable])){
+                        if(Array.isArray(otherRecord)){
+                            tablesValues[otherTable] = tablesValues[otherTable].concat(otherRecord) ;    
+                        }else{
+                            tablesValues[otherTable].push(otherRecord) ;
+                        }
+                    }else{
+                        if(Array.isArray(otherRecord)){
+                            tablesValues[otherTable] = [tablesValues[otherTable]].concat(otherRecord) ;    
+                        }else{
+                            tablesValues[otherTable] = [tablesValues[otherTable], otherRecord] ;
+                        }
                     }
+            
                 }
-            }else if(joinType === "2many"){
-                record[name] = [] ;
-                for(let r of results.rows){
+        } ;
+        for(let join of joinFetch){
+            var recordHolder = record;
+            var thisTable = join.thisTable || table ;
+            let joinType = join.type || "2one" ;
+            if(thisTable !== table){
+                //the record is to put on a subrecord
+                recordHolder = tablesValues[join.thisTable] ;
+            }
+
+            if(!Array.isArray(recordHolder)){
+                recordHolder = [recordHolder] ;
+            }
+            //the record holder has many values, we search for each of its value
+            for(let holder of recordHolder){
+                var thisRecordRows = recordRows.filter(function(r){
+                    return schema[thisTable].pk.every(function(pk){
+                        let key = pk;
+                        if(thisTable !== table){
+                            key = aliases[thisTable]+"_"+pk; //no primary table, column is prefixed
+                        }
+                        return r[key] === holder[pk] ;
+                    }) ;
+                }) ;
+                var otherRecords = [] ;
+                for(let r of thisRecordRows){
                     var pkIsNull = false;
+                    var pkValue = {} ;
                     if(schema[join.otherTable].pk.length > 0 && schema[join.otherTable].pk.every((pk)=>{
+                        pkValue[pk] = r[aliases[join.otherTable]+"_"+pk] ;
                         return !r[aliases[join.otherTable]+"_"+pk] ;
                     })){
                         pkIsNull = true ;  
@@ -245,13 +273,29 @@ class VeloxDbPgClient {
                         for(let col of schema[join.otherTable].columns){
                             otherRecord[col.name] = r[aliases[join.otherTable]+"_"+col.name] ;
                         }
-                        record[name].push(otherRecord) ;
+                        let alreadyIn = otherRecords.some(function(rec){
+                            Object.keys(pkValue).every(function(pk){
+                                return pkValue[pk] === rec[pk] ;
+                            }) ;
+                        }) ;
+                        if(!alreadyIn){
+                            otherRecords.push(otherRecord) ;
+                        }
                     }
                 }
-            }else{
-                throw ("Unknown join type "+joinType+", expected 2one or 2many") ;
+                if(joinType === "2one"){
+                    let rec = otherRecords.length>0?otherRecords[0]:null ;
+                    holder[join.name||join.otherTable] =  rec;
+                    addTableValue(join.otherTable, rec) ;
+                }else if(joinType === "2many"){
+                    holder[join.name||join.otherTable] = otherRecords ;
+                    addTableValue(join.otherTable, otherRecords) ;
+                }else{
+                    throw ("Unknown join type "+joinType+", expected 2one or 2many") ;
+                } 
             }
-            return record;
+        }
+        return record;
     }
 
     /**
@@ -338,57 +382,18 @@ class VeloxDbPgClient {
 
                 let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
 
-                this.query(sql, params, function(err, results){
+                this.query(sql, params, (err, results)=>{
                     if(err){ return callback(err) ;}
                     if(results.rows.length === 0){ return callback(null, null); }
                     if(!joinFetch){ return callback(null, results.rows[0]); }
 
                     //need some aggregate from joins
-                    var record = {} ;
-                    for(let col of schema[table].columns){
-                        record[col.name] = results.rows[0][col.name] ;
+                    try{
+                        var record = this._aggregateJoinedResult(schema, table, results.rows, aliases, joinFetch) ;
+                    } catch (err) {
+                        return callback(err) ;
                     }
                     
-                    for(let join of joinFetch){
-                        let joinType = join.type || "2one" ;
-                        let name = join.name || join.otherTable ;
-                        if(joinType === "2one"){
-                            record[name] = {} ;
-                            var pkIsNull = false;
-                            if(schema[join.otherTable].pk.length > 0 && schema[join.otherTable].pk.every((pk)=>{
-                                return !results.rows[0][aliases[join.otherTable]+"_"+pk] ;
-                            })){
-                              pkIsNull = true ;  
-                            }
-                            if(pkIsNull){
-                                record[name] = null ;
-                            } else {
-                                for(let col of schema[join.otherTable].columns){
-                                    record[name][col.name] = results.rows[0][aliases[join.otherTable]+"_"+col.name] ;
-                                }
-                            }
-                        }else if(joinType === "2many"){
-                            record[name] = [] ;
-                            for(let r of results.rows){
-                                var pkIsNull = false;
-                                if(schema[join.otherTable].pk.length > 0 && schema[join.otherTable].pk.every((pk)=>{
-                                    return !r[aliases[join.otherTable]+"_"+pk] ;
-                                })){
-                                    pkIsNull = true ;  
-                                }
-                                if(!pkIsNull){
-                                    let otherRecord = {} ;
-                                    for(let col of schema[join.otherTable].columns){
-                                        otherRecord[col.name] = r[aliases[join.otherTable]+"_"+col.name] ;
-                                    }
-                                    record[name].push(otherRecord) ;
-                                }
-                            }
-                        }else{
-                            callback("Unknown join type "+joinType+", expected 2one or 2many") ;
-                        }
-                    }
-
                     callback(null, record) ;
 
                 }) ;
@@ -561,14 +566,41 @@ class VeloxDbPgClient {
      * @param {function(Error, Array)} callback called on finished. give back the found records
      */
     search(table, search, joinFetch,orderBy, offset, limit, callback){
-        this._prepareSearchQuery(table, search, joinFetch, orderBy, offset, limit, (err, sql, params)=>{
+        this._prepareSearchQuery(table, search, joinFetch, orderBy, offset, limit, (err, sql, params, aliases, joinFetch, schema)=>{
             if(err){ return callback(err); }
             this.query(sql, params, (err, result)=>{
                 if(err){ return callback(err); }
 
+                if(!joinFetch){
+                    return callback(null, result.rows) ;
+                }
+                try{
+                    let records = [] ;
+                    let recordRows = [];
+                    for(let r of result.rows){
+                        if(recordRows.length === 0){
+                            recordRows.push(r) ;
+                        }else{
+                            let pkIsSame = schema[table].pk.every(function(pk){
+                                return r[pk] === recordRows[0][pk] ;
+                            }) ;
+                            if(pkIsSame){
+                                recordRows.push(r) ;
+                            }else{
+                                records.push(this._aggregateJoinedResult(schema, table, recordRows, aliases, joinFetch)) ;
+                                recordRows = [r] ;
+                            }
+                        }
+                    }
+                    if(recordRows.length>0){
+                        records.push(this._aggregateJoinedResult(schema, table, recordRows, aliases, joinFetch)) ;
+                    }
+                    callback(null, records) ;
+                }catch(err){
+                    return callback(err) ;
+                }
 
-
-                callback(null, result.rows) ;
+                
             }) ;
         }) ;
     }
@@ -589,15 +621,26 @@ class VeloxDbPgClient {
      * 
      * @param {string} table table name
      * @param {object} search search object
+     * @param {VeloxDatabaseJoinFetch} [joinFetch] join fetch from other sub tables
      * @param {string} [orderBy] order by clause
      * @param {function(Error, Array)} callback called on finished. give back the first found records
      */
-    searchFirst(table, search, orderBy, callback){
+    searchFirst(table, search, joinFetch, orderBy, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+            orderBy = null;
+        }
+        if(typeof(joinFetch) === "string"){
+            callback = orderBy;
+            orderBy = joinFetch;
+            joinFetch = null;
+        }
         if(typeof(orderBy) === "function"){
             callback = orderBy;
             orderBy = null;
         }
-        this.search(table, search, orderBy, 0, 1, (err, results)=>{
+        this.search(table, search, joinFetch, orderBy, 0, 1, (err, results)=>{
             if(err){ return callback(err); }
             if(results.length === 0){
                 callback(null, null) ;
@@ -628,7 +671,15 @@ class VeloxDbPgClient {
             orderBy = null;
             offset = 0;
             limit = null ;
-        } else if(typeof(orderBy) === "function"){
+        } 
+        if(typeof(joinFetch) === "string"){
+            callback = limit;
+            limit = offset;
+            offset = orderBy;
+            orderBy = joinFetch;
+            joinFetch = null ;
+        } 
+        if(typeof(orderBy) === "function"){
             callback = orderBy;
             orderBy = null;
             offset = 0;
@@ -642,7 +693,7 @@ class VeloxDbPgClient {
             limit = null ;
         }
 
-        this.getSchema(table, (err, schema)=>{
+        this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
 
             let columns = schema[table].columns ;
@@ -770,7 +821,7 @@ class VeloxDbPgClient {
                 sql = `SELECT * FROM (${sql}) sub WHERE ${windowWhere.join(" AND ")}` ;
             }
             
-            callback(null, sql, params, aliases) ;
+            callback(null, sql, params, aliases, joinFetch, schema) ;
         });
     }
 
@@ -999,7 +1050,7 @@ class VeloxDbPgClient {
         if(timeout === undefined){ timeout = 30; }
 			
         var tx = new VeloxDbPgClient(this.connection, function(){}, this.logger, this.cache) ;
-        tx.transaction = function(){ throw "You should not start a transaction in a transaction !"; }
+        tx.transaction = function(){ throw "You should not start a transaction in a transaction !"; } ;
             
 		this.connection.query("BEGIN", (err) => {
             if(err){

@@ -205,7 +205,7 @@ class VeloxDatabaseExpress {
                             try{
                                 let search = JSON.parse(req.query["search"]) ;
                                 this.db.inDatabase((client, done)=>{
-                                    client.search(table, search.conditions, search.orderBy, search.offset, search.limit, done) ;
+                                    client.search(table, search.conditions, search.joinFetch, search.orderBy, search.offset, search.limit, done) ;
                                 }, (err, foundRecords)=>{
                                     if(err){ return res.status(500).end(this._formatErr(err)) ; }
                                     res.status(200).json(foundRecords) ;
@@ -217,7 +217,7 @@ class VeloxDatabaseExpress {
                             try{
                                 let search = JSON.parse(req.query["searchFirst"]) ;
                                 this.db.inDatabase((client, done)=>{
-                                    client.searchFirst(table, search.conditions, search.orderBy, done) ;
+                                    client.searchFirst(table, search.conditions, search.joinFetch, search.orderBy, done) ;
                                 }, (err, foundRecords)=>{
                                     if(err){ return res.status(500).end(this._formatErr(err)) ; }
                                     res.status(200).json(foundRecords) ;
