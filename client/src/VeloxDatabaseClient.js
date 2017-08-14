@@ -197,7 +197,7 @@
     VeloxDatabaseClient.prototype.getSchema = function(callback){
         this._checkSchema(function(err){
             if(err){ return callback(err); }
-            callback(null, this.schema) ;
+            callback(null, JSON.parse(JSON.stringify(this.schema))) ;
         }.bind(this)) ;
     };
 
