@@ -341,8 +341,8 @@ class VeloxUserManagment{
         ] ;
 
         this.interceptClientQueries = [
-            {name : "insert", table: "velox_user", before : this.beforeInsertOrUpdate },
-            {name : "update", table: "velox_user", before : this.beforeInsertOrUpdate },
+            {name : "insert", table: "velox_user", before : this.beforeInsertOrUpdate, after: this.removePassword },
+            {name : "update", table: "velox_user", before : this.beforeInsertOrUpdate, after: this.removePassword },
             {name : "getByPk", table: "velox_user", after : this.removePassword },
             {name : "searchFirst", table: "velox_user", after : this.removePassword },
             {name : "search", table: "velox_user", after : this.removePassword },
