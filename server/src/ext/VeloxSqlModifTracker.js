@@ -327,11 +327,9 @@ class VeloxSqlModifTracker{
                                 return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
                             }
 
-                            if(result.rows.length > 1){
-                                return callback("Table "+table+" have many primary keys, can't use modification track") ;
-                            }
-
-                            let pkName = result.rows[0].column_name ;
+                            let pkInOld = result.rows.map(function(pk){
+                                return "OLD."+pk.column_name ;
+                            }).join(" || '$_$' || ") ;
 
                             let trig = `CREATE OR REPLACE FUNCTION func_velox_modiftrack_${table}_onupdate() RETURNS trigger AS 
                             $$
@@ -371,7 +369,7 @@ class VeloxSqlModifTracker{
                                 -- save all modifications in tracking table
                                 IF OLD."${c}" <> NEW."${c}" THEN
                                     INSERT INTO velox_modif_track (version_record, version_table, version_date, version_user, table_name, table_uid, column_name, column_before, column_after)
-                                    VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', OLD."${pkName}", '${c}' ,OLD."${c}"::varchar, NEW."${c}"::varchar) ;
+                                    VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', ${pkInOld}, '${c}' ,OLD."${c}"::varchar, NEW."${c}"::varchar) ;
                                 END IF ;
                                 ` ;
                             }

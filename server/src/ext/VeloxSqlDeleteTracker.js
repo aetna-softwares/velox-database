@@ -222,11 +222,10 @@ class VeloxSqlDeleteTracker{
                             return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
                         }
 
-                        if(result.rows.length > 1){
-                            return callback("Table "+table+" have many primary keys, can't use modification track") ;
-                        }
+                        let pkInOld = result.rows.map(function(pk){
+                                return "OLD."+pk.column_name ;
+                            }).join(" || '$_$' || ") ;
 
-                        let pkName = result.rows[0].column_name ;
 
                         let trig = `CREATE OR REPLACE FUNCTION func_velox_modiftrack_${table}_ondelete() RETURNS trigger AS 
                         $$
@@ -247,7 +246,7 @@ class VeloxSqlDeleteTracker{
                             END IF;
 
                             INSERT INTO velox_delete_track (version_table, delete_date, table_name, table_uid) VALUES 
-                                (table_version, now(), '${table}', OLD."${pkName}") ;
+                                (table_version, now(), '${table}', ${pkInOld}) ;
 
                             
                             RETURN OLD;
