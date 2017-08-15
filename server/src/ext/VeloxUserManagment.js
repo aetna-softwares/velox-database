@@ -436,20 +436,36 @@ class VeloxUserManagment{
 
                     this.removePassword(user) ;
 
-                    if(user.profile){
-                        client.getByPk("velox_user_profile", user.profile, (err, profile)=>{
-                            if(err){ return done(err); }
-                            user.profile = profile ;
-                            return done(null, user) ;
+                    client.search("velox_link_user_realm", {user_uid : user.uid}, [
+                        {name : "realm", otherTable: "velox_user_realm"},
+                        {name : "profile", otherTable: "velox_user_profile"}
+                    ], "realm_code", (err, realms)=>{
+                        if(err){ return done(err); }
+                        user.realms = realms.map((r)=>{
+                            return {realm: r.realm, profile: r.profile} ;
                         }) ;
-                    } else {
-                        return done(null, user) ;
-                    }
+
+                        if(user.profile){
+                            client.getByPk("velox_user_profile", user.profile, (err, profile)=>{
+                                if(err){ return done(err); }
+                                user.profile = profile ;
+                                return done(null, user) ;
+                            }) ;
+                        } else {
+                            return done(null, user) ;
+                        }
+                    }) ;
 
                 });
                 
             }) ;
-        }, callback) ;
+        }, (err,result)=>{
+            if(err){
+                db.logger.warn("Authenticate user "+login+" failed ", err) ;
+                return callback(err) ;
+            }
+            callback(null, result) ;
+        }) ;
     }
 
 

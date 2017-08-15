@@ -566,6 +566,34 @@ class VeloxDbPgClient {
      * @param {function(Error, Array)} callback called on finished. give back the found records
      */
     search(table, search, joinFetch,orderBy, offset, limit, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+            orderBy = null;
+            offset = 0;
+            limit = null ;
+        } 
+        if(typeof(joinFetch) === "string"){
+            callback = limit;
+            limit = offset;
+            offset = orderBy;
+            orderBy = joinFetch;
+            joinFetch = null ;
+        } 
+        if(typeof(orderBy) === "function"){
+            callback = orderBy;
+            orderBy = null;
+            offset = 0;
+            limit = null ;
+        } else if(typeof(offset) === "function"){
+            callback = offset;
+            offset = 0;
+            limit = null ;
+        } else if(typeof(limit) === "function"){
+            callback = limit;
+            limit = null ;
+        }
+        
         this._prepareSearchQuery(table, search, joinFetch, orderBy, offset, limit, (err, sql, params, aliases, joinFetch, schema)=>{
             if(err){ return callback(err); }
             this.query(sql, params, (err, result)=>{
@@ -710,8 +738,8 @@ class VeloxDbPgClient {
             let where = [];
             let params = [] ;
             for(let c of columns){
-                if(search[c.column_name] !== undefined){
-                    let value = search[c.column_name] ;
+                if(search[c.name] !== undefined){
+                    let value = search[c.name] ;
                     let ope = "=" ;
                     if(typeof(value) === "object" && !Array.isArray(value)){
                         ope = value.ope ;
@@ -733,21 +761,21 @@ class VeloxDbPgClient {
                             params.push(v) ;
                             wVals.push("$"+params.length) ;
                         }
-                        where.push(c.column_name+" "+ope+" ("+wVals.join(",")+")") ;
+                        where.push(c.name+" "+ope+" ("+wVals.join(",")+")") ;
                     } else if (ope.toUpperCase() === "BETWEEN"){
                         if(!Array.isArray(value) || value.length !== 2){
                             return callback("Search in table "+table+" failed. Search operand BETWEEN provided with wrong value. Expected an array with 2 values") ;
                         }
                         params.push(value[0]) ;
                         params.push(value[1]) ;
-                        where.push(c.column_name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
+                        where.push(c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
                     } else {
                         //simple value ope
                         if(ope === "=" && value === null){
-                            where.push(c.column_name+" IS NULL") ;
+                            where.push(c.name+" IS NULL") ;
                         }else{
                             params.push(value) ;
-                            where.push(c.column_name+" "+ope+" $"+params.length) ;
+                            where.push(c.name+" "+ope+" $"+params.length) ;
                         }
                     }
                 }
@@ -756,7 +784,7 @@ class VeloxDbPgClient {
 
 
             if(orderBy){
-                let colNames = columns.map((c)=>{ return c.column_name ;}) ;
+                let colNames = columns.map((c)=>{ return c.name ;}) ;
                 var orderByIsRealColumn = orderBy.split(",").every((ob)=>{
                     //check we only receive a valid column name and asc/desc
                     let col = ob.replace("DESC", "").replace("desc", "")
