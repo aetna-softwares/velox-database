@@ -901,7 +901,7 @@ class VeloxDbPgClient {
                 delete r.table_name ;
                 table.columns.push({
                     name: r.column_name,
-                    type: r.udt_name,
+                    type: this._sanitizeType(r.udt_name),
                     size : r.character_maximum_length || r.numeric_precision || r.datetime_precision
                 }) ;
             }
@@ -955,6 +955,13 @@ class VeloxDbPgClient {
                     }) ;
             }) ;
         }) ;
+    }
+
+    _sanitizeType(type){
+        if(type === "int4"){
+            return "int" ;
+        }
+        return type;
     }
 
     /**

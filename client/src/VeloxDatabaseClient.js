@@ -113,9 +113,9 @@
                             var args = Array.prototype.slice.call(arguments) ;
                             this[key].apply(this, args) ;
                         }.bind(this) ;
-                    });
+                    }.bind(this));
                 }
-            });
+            }.bind(this));
 
             callback() ;
         }.bind(this)) ;
