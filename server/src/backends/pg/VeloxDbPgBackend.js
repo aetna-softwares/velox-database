@@ -377,7 +377,7 @@ class VeloxDbPgClient {
                 
                 for(let k of pkColumns){
                     params.push(pk[k]) ;
-                    where.push(k+" = $"+params.length) ;
+                    where.push("t."+k+" = $"+params.length) ;
                 }
 
                 let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
@@ -761,21 +761,21 @@ class VeloxDbPgClient {
                             params.push(v) ;
                             wVals.push("$"+params.length) ;
                         }
-                        where.push(c.name+" "+ope+" ("+wVals.join(",")+")") ;
+                        where.push("t."+c.name+" "+ope+" ("+wVals.join(",")+")") ;
                     } else if (ope.toUpperCase() === "BETWEEN"){
                         if(!Array.isArray(value) || value.length !== 2){
                             return callback("Search in table "+table+" failed. Search operand BETWEEN provided with wrong value. Expected an array with 2 values") ;
                         }
                         params.push(value[0]) ;
                         params.push(value[1]) ;
-                        where.push(c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
+                        where.push("t."+c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
                     } else {
                         //simple value ope
                         if(ope === "=" && value === null){
-                            where.push(c.name+" IS NULL") ;
+                            where.push("t."+c.name+" IS NULL") ;
                         }else{
                             params.push(value) ;
-                            where.push(c.name+" "+ope+" $"+params.length) ;
+                            where.push("t."+c.name+" "+ope+" $"+params.length) ;
                         }
                     }
                 }
