@@ -128,9 +128,8 @@ class VeloxBinaryStorage{
             },
             getReadBinaryMiddleware: function(){
                 return (req, res)=>{
-                    let urlParsed = url.parse(req.url) ;
-                    let urlPath = urlParsed.pathname ;
-                    let uid = urlPath.substring(urlPath.lastIndexOf("/")+1) ;
+                    let uid = req.params.uid;
+                    let disposition = req.params.action==="download"?"attachment":"inline";                    
                     this.db.getBinary(uid, (err, buffer, record)=>{
                         if (err) {
                             this.db.logger.error("get binary failed : ", err, uid);
@@ -141,7 +140,9 @@ class VeloxBinaryStorage{
                             res.cookie(req.query.downloadToken, "here is your download cookie",  { httpOnly: false , secure : false}) ;
                         }
 
-                        res.setHeader('Content-disposition', 'attachment; filename=' + record.filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
+                        let filename = req.params.filename || record.filename ;
+
+                        res.setHeader('Content-disposition', disposition+'; filename=' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
                         res.setHeader('Content-type', record.mime_type);
             
                         res.end(buffer);
@@ -154,7 +155,7 @@ class VeloxBinaryStorage{
             function(app){
                 //this is the VeloxDatabaseExpress object
                 app.post(options.saveEndPoint || "/saveBinary", this.getSaveBinaryMiddleware());
-                app.get(options.readEndPoint || "/readBinary", this.getReadBinaryMiddleware());
+                app.get((options.readEndPoint || "/readBinary")+"/:action/:uid/:filename?", this.getReadBinaryMiddleware());
             }
         ] ;
     }
@@ -307,12 +308,12 @@ class VeloxBinaryStorage{
      */
     createTargetPath(binaryRecord){
         var targetPath = this.pathPattern ;
-        targetPath = targetPath.replace(new RegExp("table", "g"), binaryRecord.table_name || "no_table") ;
-        targetPath = targetPath.replace(new RegExp("table_uid", "g"), binaryRecord.table_uid || "no_uid") ;
-        targetPath = targetPath.replace(new RegExp("uid", "g"), binaryRecord.uid) ;
-        targetPath = targetPath.replace(new RegExp("ext", "g"), binaryRecord.filename?path.extname(binaryRecord.filename):"") ;
-        targetPath = targetPath.replace(new RegExp("date", "g"), binaryRecord.creation_datetime.toISOString().substring(0,10)) ;
-        targetPath = targetPath.replace(new RegExp("time", "g"), binaryRecord.creation_datetime.toISOString().substring(11,19).replace(/:/g, "_")) ;
+        targetPath = targetPath.replace(new RegExp("{table}", "g"), binaryRecord.table_name || "no_table") ;
+        targetPath = targetPath.replace(new RegExp("{table_uid}", "g"), binaryRecord.table_uid || "no_uid") ;
+        targetPath = targetPath.replace(new RegExp("{uid}", "g"), binaryRecord.uid) ;
+        targetPath = targetPath.replace(new RegExp("{ext}", "g"), binaryRecord.filename?path.extname(binaryRecord.filename):"") ;
+        targetPath = targetPath.replace(new RegExp("{date}", "g"), binaryRecord.creation_datetime.toISOString().substring(0,10)) ;
+        targetPath = targetPath.replace(new RegExp("{time}", "g"), binaryRecord.creation_datetime.toISOString().substring(11,19).replace(/:/g, "_")) ;
         return targetPath ;
     }
 

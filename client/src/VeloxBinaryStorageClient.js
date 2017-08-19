@@ -37,11 +37,23 @@
         } ;
         client._registerEndPointFunction(saveEndPoint, saveFun) ;
         
-         //add auth api entry
+         //add read api entry
         var readEndPoint = client.options.readEndPoint || "readBinary" ;
-        client._registerEndPointFunction(readEndPoint+"/download", function(uid, callback, timeout){
+        client._registerEndPointFunction(readEndPoint+"/download", function(recordOrUid, filename, callback, timeout){
+            if(typeof(filename) === "function"){
+                timeout = callback ;
+                callback = filename;
+                filename = null;
+            }
+            var uid = recordOrUid;
+            if(typeof(recordOrUid) === "object"){
+                uid = recordOrUid.uid ;
+                if(!filename){
+                    filename = recordOrUid.filename ;
+                }
+            }
             var downloadToken = (uid+"_"+Date.now()) ;
-            var url = readEndPoint+"/"+uid+"?downloadToken="+downloadToken ;
+            var url = readEndPoint+"/download/"+uid+(filename?"/"+filename:"")+"?downloadToken="+downloadToken ;
             if(callback){
                 var start = Date.now() ;
                 var timer = setInterval(function(){
@@ -65,8 +77,15 @@
             document.location.href = url ;
         }) ;
 
-        client._registerEndPointFunction(readEndPoint+"/url", function(uid){
-            return readEndPoint+"/"+uid ;
+        client._registerEndPointFunction(readEndPoint+"/url", function(recordOrUid, filename){
+            var uid = recordOrUid;
+            if(typeof(recordOrUid) === "object"){
+                uid = recordOrUid.uid ;
+                if(!filename){
+                    filename = recordOrUid.filename ;
+                }
+            }
+            return client.options.serverUrl+readEndPoint+"/inline/"+uid+(filename?"/"+filename:"") ;
         }) ;
       
         callback() ;

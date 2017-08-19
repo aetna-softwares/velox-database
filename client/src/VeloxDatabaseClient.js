@@ -441,7 +441,7 @@
         this._checkSchema(function(err){
             if(err){ return callback(err); }
             this.client.ajax(this.dbEntryPoint+"multiread", "POST", {
-                reads
+                reads: reads
             }, "json",callback) ;    
         }.bind(this)) ;
         
