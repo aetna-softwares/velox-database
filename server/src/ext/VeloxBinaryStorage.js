@@ -4,6 +4,7 @@ const fs = require('fs-extra');
 const path = require('path');
 const multiparty = require('multiparty');
 const url = require('url');
+const crypto = require('crypto');
 
 /**
  * This extension handle binary storage in database
@@ -192,14 +193,6 @@ class VeloxBinaryStorage{
 
             let writeStream = fs.createWriteStream(tempFile) ;
             
-            readStream.on('error', onError);
-            writeStream.on('error', onError);
-        
-            
-            writeStream.on('open',  () => {
-                readStream.pipe(writeStream) ;
-            }) ;
-
             var errored = false ;
             let onError = (err)=> {
                 // ensure callback is called only once:
@@ -208,12 +201,22 @@ class VeloxBinaryStorage{
                     return callback(err) ;
                 }
             } ;
+
+            readStream.on('error', onError);
+            writeStream.on('error', onError);
+        
+            
+            writeStream.on('open',  () => {
+                readStream.pipe(writeStream) ;
+            }) ;
+
+            
             
         
             writeStream.once('close', ()=> {
                 //copy in temp file succeed
 
-                fs.stats(tempFile, (err, stats)=>{
+                fs.stat(tempFile, (err, stats)=>{
                     if(err){ return callback(err) ;}
                     this.checksum(tempFile, (err, checksum)=>{
                         if(err){ return callback(err) ;}
@@ -237,7 +240,7 @@ class VeloxBinaryStorage{
                         binaryRecord.path = this.createTargetPath(binaryRecord) ;
                         let moveFailed = false;
                         db.transaction((client, done)=>{
-                            var afterSaveDone = function(err, savedRecord){ //when the db save is done, move the file
+                            var afterSaveDone = (err, savedRecord)=>{ //when the db save is done, move the file
                                 if(err){ return done(err); } //save db failed, abort
                                 fs.move(tempFile, path.join(this.pathStorage, binaryRecord.path), {overwrite: true}, function(err){
                                     if(err){ 
@@ -253,7 +256,7 @@ class VeloxBinaryStorage{
                             if(mustCreate){
                                 client.insert("velox_binary", binaryRecord, afterSaveDone) ;
                             }else{
-                                client.getByPk("velox_binary", binaryRecord.uid, function(err, existingRecord){
+                                client.getByPk("velox_binary", binaryRecord.uid, (err, existingRecord)=>{
                                     if(err){ return done(err); }
                                     if(!existingRecord){
                                         binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
