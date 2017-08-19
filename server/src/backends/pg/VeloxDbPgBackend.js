@@ -533,7 +533,8 @@ class VeloxDbPgClient {
                 }
 
                 if(sets.length === 0){
-                    return callback("Can't found any column to update in "+table+" from record "+JSON.stringify(record)) ;
+                    //nothing to update, select the record and return it
+                    return this.getByPk(table, record, callback) ;
                 }
 
                 let sql = `UPDATE ${table} SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;

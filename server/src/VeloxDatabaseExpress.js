@@ -99,7 +99,7 @@ class VeloxDatabaseExpress {
         return (req, res) => {
             let data = '' ;
             
-            var urlParsed = url.parse(req.url) ;
+            let urlParsed = url.parse(req.url) ;
             let urlPath = urlParsed.pathname ;
 
             let record = req.body ;
