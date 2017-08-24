@@ -232,13 +232,13 @@ class VeloxBinaryStorage{
                         let mustCreate = false ;
                         if(!binaryRecord.uid){
                             binaryRecord.uid = uuid.v4() ;
-                            binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
                             mustCreate = true ;
+                            binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
                         }
 
                         
                         
-                        binaryRecord.path = this.createTargetPath(binaryRecord) ;
+                        
                         let moveFailed = false;
                         db.transaction((client, done)=>{
                             var afterSaveDone = (err, savedRecord)=>{ //when the db save is done, move the file
@@ -255,6 +255,7 @@ class VeloxBinaryStorage{
                             } ;
 
                             if(mustCreate){
+                                binaryRecord.path = this.createTargetPath(binaryRecord) ;
                                 client.insert("velox_binary", binaryRecord, afterSaveDone) ;
                             }else{
                                 client.getByPk("velox_binary", binaryRecord.uid, (err, existingRecord)=>{
@@ -264,6 +265,9 @@ class VeloxBinaryStorage{
                                         binaryRecord.path = this.createTargetPath(binaryRecord) ;
                                         client.insert("velox_binary", binaryRecord, afterSaveDone) ;
                                     }else{
+                                        if(!binaryRecord.creation_datetime){
+                                            binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
+                                        }
                                         binaryRecord.path = this.createTargetPath(binaryRecord) ;
                                         client.update("velox_binary", binaryRecord, afterSaveDone) ;
                                     }
