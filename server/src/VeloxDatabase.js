@@ -570,6 +570,8 @@ class VeloxDatabase {
                 if(err){ return callback(err); }
 
                 let changes = [];
+
+                let lastVersion = updater.getLastVersion() ;
                 
                 for(let extension of VeloxDatabase.extensions){
                     if(extension.prependSchemaChanges){
@@ -582,7 +584,7 @@ class VeloxDatabase {
                 
                 changes = changes.concat(updater.getChanges(version)) ;
                 
-                let lastVersion = updater.getLastVersion() ;
+                
 
                 for(let extension of VeloxDatabase.extensions){
                     if(extension.addSchemaChanges){

@@ -41,7 +41,9 @@ class VeloxSqlUpdater {
      * @param {Array} [params] - SQL params for the query
      */
     addChange(sinceVersion, sql, params){
-        this.changes.push(new VeloxSqlChange(sinceVersion, sql, params)) ;
+        var change = new VeloxSqlChange(sinceVersion, sql, params) ;
+        change.index = this.changes.length ;
+        this.changes.push(change) ;
     }
 
     /**
@@ -75,9 +77,6 @@ class VeloxSqlUpdater {
      * @return {VeloxSqlChange[]} - the list of changes sorted
      */
     _getSortedChanges(){
-        this.changes.forEach(function(c, i){
-            c.index = i ;
-        }) ;
         return this.changes.sort((c1, c2)=>{
             if(c1.sinceVersion > c2.sinceVersion){
                 return 1;
@@ -132,7 +131,9 @@ class VeloxSqlUpdater {
                             }
                             for(let q of hjsonFile.queries){
                                 if(typeof(q) === "string"){
-                                    changes.push(new VeloxSqlChange(toVersion, q, [])) ;
+                                    var c = new VeloxSqlChange(toVersion, q, []) ;
+                                    c.index = changes.length ;
+                                    changes.push(c) ;
                                 } else if (typeof(q) === "object"){
                                     if(!q.query) {
                                         return cb("Missing query key in queries entry in file "+file) ;
@@ -143,7 +144,9 @@ class VeloxSqlUpdater {
                                     if(!Array.isArray(q.params)) {
                                         return cb("Params is not an array in queries entry in file "+file) ;
                                     }
-                                    changes.push(new VeloxSqlChange(toVersion, q.query, q.params)) ;
+                                    var c = new VeloxSqlChange(toVersion, q.query, q.params) ;
+                                    c.index = changes.length ;
+                                    changes.push(c) ;
                                 }
                             }
                             cb() ;
