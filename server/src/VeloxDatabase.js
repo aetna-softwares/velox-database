@@ -569,8 +569,19 @@ class VeloxDatabase {
             client.getCurrentVersion((err, version)=>{
                 if(err){ return callback(err); }
 
-                let changes = updater.getChanges(version) ;
-
+                let changes = [];
+                
+                for(let extension of VeloxDatabase.extensions){
+                    if(extension.prependSchemaChanges){
+                        let extensionChanges = extension.prependSchemaChanges(this.options.backend, version, lastVersion) ;
+                        for(let c of extensionChanges){
+                            changes.push(c) ;
+                        }
+                    }
+                }
+                
+                changes = changes.concat(updater.getChanges(version)) ;
+                
                 let lastVersion = updater.getLastVersion() ;
 
                 for(let extension of VeloxDatabase.extensions){

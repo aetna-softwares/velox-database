@@ -384,7 +384,7 @@ class VeloxBinaryStorage{
      * 
      * @param {string} backend 
      */
-    addSchemaChanges(backend){
+    prependSchemaChanges(backend){
         if(["pg"].indexOf(backend) === -1){
             throw "Backend "+backend+" not handled by this extension" ;
         }

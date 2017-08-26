@@ -75,8 +75,17 @@ class VeloxSqlUpdater {
      * @return {VeloxSqlChange[]} - the list of changes sorted
      */
     _getSortedChanges(){
+        this.changes.forEach(function(c, i){
+            c.index = i ;
+        }) ;
         return this.changes.sort((c1, c2)=>{
-            return c1.sinceVersion - c2.sinceVersion ;
+            if(c1.sinceVersion > c2.sinceVersion){
+                return 1;
+            }else if(c1.sinceVersion < c2.sinceVersion){
+                return -1;
+            }else{
+                return c1.index > c2.index ;
+            }
         }) ;
     }
 
