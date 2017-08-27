@@ -15,6 +15,7 @@
      * @typedef VeloxUserManagmentClientOptions
      * @type {object}
      * @property {string} [authEndPoint] the auth entry point (default auth)
+     * @property {string} [refreshEndPoint] the refresh user entry point (default refreshUser)
      * @property {string} [logoutEndPoint] the auth entry point (default logout)
      * @property {string} [localStorageUserKey] the local storage key to store current user (default velox_current_user)
      */
@@ -54,8 +55,23 @@
         } ;
         client._registerEndPointFunction(authEndPoint, authFun) ;
         
+        //add refresh user api entry
+        var refreshEndPoint = client.options.refreshEndPoint || "refreshUser" ;
+        var ajaxRefresh = client._createEndPointFunction(refreshEndPoint , "GET", [ ]) ;
+        var refreshFun = function(callback){
+            ajaxRefresh.bind(client)(function(err, user){
+                if(err){
+                    return callback(err) ;
+                }
+                this.currentUser = user;
+                localStorage.setItem(userKey, JSON.stringify(user)) ;
+                callback(null, user) ;
+            }.bind(client)) ;
+        } ;
+        client._registerEndPointFunction(refreshEndPoint, refreshFun) ;
+        
 
-         //add auth api entry
+         //add logout api entry
         var logoutEndPoint = client.options.logoutEndPoint || "logout" ;
         var ajaxLogout = client._createEndPointFunction(logoutEndPoint , "POST") ;
         var logoutFun = function(callback){

@@ -59,6 +59,7 @@ class VeloxUserManagment{
      * @property {string} [realmField] the realm field name in login form (default : realm)
      * @property {string} [authEndPoint] the login authentication end point (default : "/auth")
      * @property {string} [logoutEndPoint] the logout end point (default : "/logout")
+     * @property {string} [refreshEndPoint] the refresh user end point (default : "/refreshUser")
      * @property {object} [sessionOptions] custom options for express-session
      * @property {object} [sessionCheck] option for session check
      */
@@ -102,6 +103,10 @@ class VeloxUserManagment{
             authenticate : function(login, password, realm, callback){
                 //this is the VeloxDatabase object
                 self.authenticateUser(this, login, password, realm, callback) ;
+            },
+            refreshUser : function(uid, callback){
+                //this is the VeloxDatabase object
+                self.refreshUser(this, uid, callback) ;
             }
         } ;
 
@@ -338,6 +343,14 @@ class VeloxUserManagment{
                             res.end() ;
                         });
                 });
+                app.get(options.refreshEndPoint || "/refreshUser",
+                    (req, res) => {
+                        if(!req.user){ return res.status(401).end("no user"); }
+                        this.db.refreshUser(req.user.uid, (err, user)=>{
+                            if(err){ return res.status(500).end(err); }
+                            res.json(user) ;
+                        }) ;
+                });
 
             }
         ] ;
@@ -467,6 +480,46 @@ class VeloxUserManagment{
                 return callback(err) ;
             }
             callback(null, result) ;
+        }) ;
+    }
+
+    /**
+     * Get a refreshed copy of user
+     * 
+     * @param {VeloxDatabase} db the database access
+     * @param {string} uid the user id
+     * @param {function} callback called with refreshed user
+     */
+    refreshUser(db, uid, callback){
+        db.inDatabase((client, done)=>{
+            client.getByPk("velox_user", uid, (err, user)=>{
+                if(err){ return done(err); }
+                this._getFullUser(client, user, done) ;
+            });
+        }, callback);
+    }
+
+    _getFullUser(client, user, callback){
+        this.removePassword(user) ;
+        
+        client.search("velox_link_user_realm", {user_uid : user.uid}, [
+            {name : "realm", otherTable: "velox_user_realm"},
+            {name : "profile", otherTable: "velox_user_profile"}
+        ], "realm_code", (err, realms)=>{
+            if(err){ return callback(err); }
+            user.realms = realms.map((r)=>{
+                return {realm: r.realm, profile: r.profile} ;
+            }) ;
+
+            if(user.profile){
+                client.getByPk("velox_user_profile", user.profile, (err, profile)=>{
+                    if(err){ return callback(err); }
+                    user.profile = profile ;
+                    return callback(null, user) ;
+                }) ;
+            } else {
+                return callback(null, user) ;
+            }
         }) ;
     }
 
