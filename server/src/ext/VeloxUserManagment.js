@@ -51,6 +51,7 @@ class VeloxUserManagment{
      * @property {Array} [profileMeta] Meta data to add on profile table : [{name: "foo", type: "varchar(128)"}, {name: "bar", type: "int"}]
      * @property {object} [adminUser] The admin user to create on database creation
      * @property {object} [adminProfile] The admin profile to create on database creation
+     * @property {object[]} [defaultRealms] The default realms to create
      * @property {boolean} [dontCreateAdmin] set to true if you don't want the admin automatic creation
      * @property {string} [sessionSecret] the session secret salt phrase for express middleware
      * @property {string} [usernameField] the username field name in login form (default : username)
@@ -78,6 +79,7 @@ class VeloxUserManagment{
         this.dontCreateAdmin = options.dontCreateAdmin || false ;
         this.fixedProfiles = options.fixedProfiles || null ;
         this.adminProfile = options.adminProfile || null ;
+        this.defaultRealms = options.defaultRealms || null ;
         this.adminUser = options.adminUser || {login: "admin", password: "admin", name: "Administrator", auth_type: "password"} ;
 
         if(this.adminProfile){
@@ -527,12 +529,29 @@ class VeloxUserManagment{
                     }
                 }) ;
             }
+            
+            if(this.defaultRealms){
+                for(let realm of this.defaultRealms){
+                    changes.push({
+                        run: (tx, cb)=>{
+                            tx.searchFirst("velox_user_realm", { code: realm.code}, (err, existingRealm)=>{
+                                if(err){ return cb(err); }
+                                if(existingRealm){
+                                    return tx.update("velox_user_realm", realm, cb) ;
+                                }
+                                tx.insert("velox_user_realm", realm, cb) ;
+                            }) ;
+                        }
+                    }) ;
+                }
+            }
 
             changes.push({
                 run: (tx, cb)=>{
                     tx.searchFirst("velox_user", {login: this.adminUser.login}, (err, adminUser)=>{
                         if(err){ return cb(err); }
                         if(adminUser){
+                            this.adminUser.uid = adminUser.uid;
                             //update only the profile, other information may have been change by user
                             return tx.update("velox_user", {uid: adminUser.uid, profile_code: this.adminUser.profile_code}, cb) ;
                         }
@@ -540,6 +559,23 @@ class VeloxUserManagment{
                     }) ;
                 }
             }) ;
+
+            if(this.adminUser.realms){
+                for(let realm of this.adminUser.realms){
+                    changes.push({
+                        run: (tx, cb)=>{
+                            realm.user_uid = this.adminUser.uid ;
+                            tx.getByPk("velox_link_user_realm", realm, (err, existingRealm)=>{
+                                if(err){ return cb(err); }
+                                if(existingRealm){
+                                    return cb() ;
+                                }
+                                tx.insert("velox_link_user_realm", realm, cb) ;
+                            }) ;
+                        }
+                    }) ;
+                }
+            }
         }
 
         
