@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt") ;
 const uuid = require("uuid") ;
 const LocalStrategy = require('passport-local').Strategy ;
+var GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
 const FAKE_PASSWORD = "*********" ;
 
 /**
@@ -45,6 +46,19 @@ const FAKE_PASSWORD = "*********" ;
 class VeloxUserManagment{
 
     /**
+     * @typedef VeloxUserManagmentGoogleOptions
+     * @type {object}
+     * @property {string} clientID Google client ID
+     * @property {string} clientSecret Google client secret
+     * @property {string} serverBaseURL serverBaseUrl
+     * @property {string} failureRedirect auth failure redirect
+     * @property {string} successRedirect auth success redirect
+     * @property {string} [authEndPoint] the login authentication end point (default : "/auth/google")
+     * @property {string} [callbackEndPoint] the callback end point (default : "/auth/google/callback")
+     */
+
+
+    /**
      * @typedef VeloxUserManagmentOption
      * @type {object}
      * @property {Array} [userMeta] Meta data to add on user table : [{name: "foo", type: "varchar(128)"}, {name: "bar", type: "int"}]
@@ -60,8 +74,12 @@ class VeloxUserManagment{
      * @property {string} [authEndPoint] the login authentication end point (default : "/auth")
      * @property {string} [logoutEndPoint] the logout end point (default : "/logout")
      * @property {string} [refreshEndPoint] the refresh user end point (default : "/refreshUser")
+     * @property {string} [activateEndPoint] the activation user end point (default : "/activateUser")
+     * @property {string} [createEndPoint] the activation user end point (default : "/createUser")
+     * @property {boolean} [mustActivate] user must activate account with tocket (default: false)
      * @property {object} [sessionOptions] custom options for express-session
      * @property {object} [sessionCheck] option for session check
+     * @property {object} [google] option for google authentication
      */
 
     /**
@@ -75,6 +93,7 @@ class VeloxUserManagment{
         if(!options){
             options = {} ;
         }
+        this.options = options ;
         this.userMeta = options.userMeta || [] ;
         this.profileMeta = options.profileMeta || [] ;
         this.dontCreateAdmin = options.dontCreateAdmin || false ;
@@ -103,6 +122,14 @@ class VeloxUserManagment{
             authenticate : function(login, password, realm, callback){
                 //this is the VeloxDatabase object
                 self.authenticateUser(this, login, password, realm, callback) ;
+            },
+            activate : function(activationToken, password, callback){
+                //this is the VeloxDatabase object
+                self.activateUser(this, activationToken, password, callback) ;
+            },
+            createUser : function(user, callback){
+                //this is the VeloxDatabase object
+                self.createUser(this, user, callback) ;
             },
             refreshUser : function(uid, callback){
                 //this is the VeloxDatabase object
@@ -143,6 +170,30 @@ class VeloxUserManagment{
                         }
                         this.db.authenticate(username, password, req.body[options.realmField || "realm"], done) ;
                 }));
+
+                if(options.google){
+                    passport.use(new GoogleStrategy({
+                        clientID        : options.google.clientID,
+                        clientSecret    : options.google.clientSecret,
+                        callbackURL     : options.google.serverBaseURL+(options.google.callbackEndPoint || "/auth/google/callback"),
+                    },
+                    (token, refreshToken, profile, done) => {
+                        this.db.transaction((tx, done)=>{
+                            tx.searchFirst("velox_user", {uid: profile.id, auth_type:"google"}, (err, user)=>{
+                                if(err){ return done(err) ;}
+                                if(user) { return done(null, user) ;}
+                                var newUser = {} ;
+                                newUser.uid = profile.id ;
+                                newUser.name  = profile.displayName;
+                                newUser.auth_type = "google" ;
+                                newUser.email = profile.emails[0].value; // pull the first email
+                                tx.insert(newUser, done) ;
+                            }) ;
+                        }, done) ;
+                    }));
+                }
+
+
             },
 
             getSessionMiddleware: function(session, sessionOptions){
@@ -281,6 +332,9 @@ class VeloxUserManagment{
                     if(req.url.indexOf(globalOptions.logoutEndPoint|| "/logout") === 0){
                         return next(); //always accept logout endpoint
                     }
+                    if(req.url.indexOf(globalOptions.createUser|| "/createUser") === 0){
+                        return next(); //always accept logout endpoint
+                    }
 
                     if(!options.makeSchemaPrivate){
                         if(req.url.indexOf(globalDatabaseOptions.dbEntryPoint+"/schema") === 0){
@@ -324,6 +378,7 @@ class VeloxUserManagment{
                     usernameField : options.usernameField,
                     passwordField : options.passwordField,
                     realmField : options.realmField,
+                    google: options.google
                 }) ;
 
                 app.use(this.getSessionCheckMiddleware(options.sessionCheck, globalDatabaseOptions)) ;
@@ -347,10 +402,39 @@ class VeloxUserManagment{
                     (req, res) => {
                         if(!req.user){ return res.status(401).end("no user"); }
                         this.db.refreshUser(req.user.uid, (err, user)=>{
-                            if(err){ return res.status(500).end(err); }
+                            if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
                 });
+                app.get(options.activateEndPoint || "/activateUser",
+                    (req, res) => {
+                        this.db.activate(req.activationToken, req.password, (err, user)=>{
+                            if(err){ return res.status(500).json(err); }
+                            res.json(user) ;
+                        }) ;
+                });
+                app.post(options.createEndPoint || "/createUser",
+                    (req, res) => {
+                        this.db.createUser(req.body.user, (err, user)=>{
+                            if(err){ return res.status(500).json(err); }
+                            res.json(user) ;
+                        }) ;
+                });
+
+
+                if(options.google){
+                    //google authentication is activated
+
+                    app.get(options.google.authEndPoint || '/auth/google',
+                        passport.authenticate('google', { scope: ['profile', 'email'] }));
+                    
+                    app.get(options.google.callbackEndPoint || '/auth/google/callback', 
+                        passport.authenticate('google', { failureRedirect: options.google.failureRedirect }),
+                        function(req, res) {
+                            // Successful authentication, redirect home.
+                            res.redirect(options.google.successRedirect);
+                    });
+                }
 
             }
         ] ;
@@ -422,10 +506,10 @@ class VeloxUserManagment{
             realm = null;
         }
         db.inDatabase((client, done)=>{
-            let sql = "SELECT *, profile_code as profile FROM velox_user WHERE login = $1 AND disabled = FALSE" ;
+            let sql = "SELECT *, profile_code as profile FROM velox_user WHERE login = $1 AND disabled = FALSE AND active = TRUE" ;
             let params = [login];
             if(realm){
-                sql = "SELECT u.*, l.profile_code as profile FROM velox_user u JOIN velox_link_user_realm l ON u.uid = l.user_uid WHERE l.realm_code = $1 AND u.login = $2 AND u.disabled = FALSE" ;
+                sql = "SELECT u.*, l.profile_code as profile FROM velox_user u JOIN velox_link_user_realm l ON u.uid = l.user_uid WHERE l.realm_code = $1 AND u.login = $2 AND u.disabled = FALSE AND u.active = TRUE" ;
                 params = [realm, login] ;
             }
             client.query(sql, params, (err, results)=>{
@@ -477,6 +561,78 @@ class VeloxUserManagment{
         }, (err,result)=>{
             if(err){
                 db.logger.warn("Authenticate user "+login+" failed ", err) ;
+                return callback(err) ;
+            }
+            callback(null, result) ;
+        }) ;
+    }
+
+    /**
+     * Create a new user
+     * 
+     * @param {VeloxDatabase} db the db access
+     * @param {object} user the user to create
+     * @param {boolean} mustActivate if true the user must activate the account
+     * @param {function(err, user)} callback called with created user if succeed
+     */
+    createUser(db, user, callback){
+        delete user.profile_code; //remove profile code if someone is trying to inject it
+        if(this.options.mustActivate){
+            user.active = false ;
+            user.activation_token = uuid.v4() ;
+        }else{
+            user.active = true ;
+        }
+        if(!user.uid){ user.uid = uuid.v4() ; }
+        db.transaction((client, done)=>{
+            client.insert("velox_user", user, done) ;
+        }, callback) ;
+    }
+
+    /**
+     * Activate the user using the activation token
+     * 
+     * Optionnaly set the password
+     * 
+     * @param {VeloxDatabase} db the db access
+     * @param {string} activationToken user password (not hashed)
+     * @param {string} [password] user password (not hashed)
+     * @param {function(err, user)} callback called with user if succeed
+     */
+    activateUser(db, activationToken, password, callback) {
+        if(typeof(password) === "function"){
+            callback = password ;
+            password = null;
+        }
+        db.transaction((client, done)=>{
+            let sql = "SELECT * FROM velox_user WHERE activation_token = $1 AND active = FALSE" ;
+            let params = [activationToken];
+            client.query(sql, params, (err, results)=>{
+                if(err){ return done(err); }
+
+                if(results.rows.length === 0){
+                    return done(null, false) ;
+                }
+
+                if(results.rows.length > 1){
+                    //there is a problem in the configuration somewhere
+                    db.logger.error("The activation token "+activationToken+" exists many times ") ;
+                    return done(null, false) ;
+                }
+
+                let user = results.rows[0] ;
+                var updateData = {activation_token: '', active: true, uid: user.uid} ;
+                if(password){
+                    updateData.password = password ;
+                }
+                client.update("velox_user", updateData, (err, user)=>{
+                    if(err){ return done(err); }
+                    return done(null, user) ;
+                }) ;
+            }) ;
+        }, (err,result)=>{
+            if(err){
+                db.logger.warn("Activate user "+activationToken+" failed ", err) ;
                 return callback(err) ;
             }
             callback(null, result) ;
@@ -690,6 +846,8 @@ class VeloxUserManagment{
             "password VARCHAR(128)",
             "name VARCHAR(128)",
             "disabled BOOLEAN DEFAULT FALSE",
+            "active BOOLEAN DEFAULT FALSE",
+            "activation_token VARCHAR(40)",
             "profile_code VARCHAR(30) REFERENCES velox_user_profile(code)",
         ].concat(metaLines) ;
         if(backend === "pg"){
