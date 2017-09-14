@@ -432,30 +432,42 @@ class VeloxDbPgClient {
      * Insert a record in the table. Give back the inserted record (with potential generated values)
      * 
      * @param {string} table the table name
-     * @param {object} record the object to insert
+     * @param {object} records the object to insert or an array of object to insert
      * @param {function(Error, object)} callback called when insert is done. give back the inserted result (with potential generated values)
      */
-    insert(table, record, callback){
-        if(!record) { return callback("Try to insert null record in table "+table) ; }
+    insert(table, records, callback){
+        if(!records) { return callback("Try to insert null record in table "+table) ; }
         this.getColumnsDefinition(table, (err, columns)=>{
             if(err){ return callback(err); }
 
             let cols = [];
             let values = [];
             let params = [] ;
+            if(!Array.isArray(records)){
+                records = [records] ;
+            }
             for(let c of columns){
-                if(record[c.column_name] !== undefined){
-                    cols.push(c.column_name) ;
-                    params.push(record[c.column_name]) ;
-                    values.push("$"+params.length) ;
+                for(let r of records){
+                    if(r[c.column_name] !== undefined){
+                        cols.push(c.column_name) ;
+                        break;
+                    }
                 }
             }
-
             if(cols.length === 0){
-                return callback("Can't found any column to insert in "+table+" from record "+JSON.stringify(record)) ;
+                return callback("Can't found any column to insert in "+table+" from record "+JSON.stringify(records)) ;
+            }
+            for(let record of records){
+                var valuesCols = [] ;
+                for(let c of cols){
+                    params.push(record[c]) ;
+                    valuesCols.push("$"+params.length) ;
+                }
+                values.push(`(${valuesCols.join(",")})`);
             }
 
-            let sql = `INSERT INTO ${table}(${cols.join(",")}) VALUES (${values.join(",")}) RETURNING *` ;
+
+            let sql = `INSERT INTO ${table}(${cols.join(",")}) VALUES ${values.join(",")} RETURNING *` ;
 
             this.queryFirst(sql, params, callback) ;
         }) ;
@@ -774,7 +786,7 @@ class VeloxDbPgClient {
 
             let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")}`;
             if(where.length > 0){
-                sql += ` WHERE ${where.join("AND")}` ;
+                sql += ` WHERE ${where.join(" AND ")}` ;
             }
             if(orderBy){
                 sql += ` ORDER BY ${orderBy}` ;
@@ -829,7 +841,7 @@ class VeloxDbPgClient {
                     FROM information_schema.columns t
                 JOIN information_schema.tables t1 on t.table_name = t1.table_name
                     WHERE t.table_schema='public'
-                    AND t1.table_type = 'BASE TABLE'
+                    AND t1.table_type IN ('BASE TABLE', 'VIEW')
                     order by t.table_name, ordinal_position
         `, [], (err, results)=>{
             if(err){ return callback(err); }

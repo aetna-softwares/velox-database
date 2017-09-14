@@ -224,6 +224,49 @@ class VeloxDatabase {
         }) ;
     }
 
+    getByPk(table, pk, joinFetch, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+        }
+        this.inDatabase((client, done)=>{
+            client.getByPk(table, pk, joinFetch, done) ;
+        }, callback) ;
+    }
+
+    search(table, search, joinFetch,orderBy, offset, limit, callback){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch;
+            joinFetch = null;
+            orderBy = null;
+            offset = 0;
+            limit = null ;
+        } 
+        if(typeof(joinFetch) === "string"){
+            callback = limit;
+            limit = offset;
+            offset = orderBy;
+            orderBy = joinFetch;
+            joinFetch = null ;
+        } 
+        if(typeof(orderBy) === "function"){
+            callback = orderBy;
+            orderBy = null;
+            offset = 0;
+            limit = null ;
+        } else if(typeof(offset) === "function"){
+            callback = offset;
+            offset = 0;
+            limit = null ;
+        } else if(typeof(limit) === "function"){
+            callback = limit;
+            limit = null ;
+        }
+        this.inDatabase((client, done)=>{
+            client.search(table, search, joinFetch,orderBy, offset, limit, done) ;
+        }, callback) ;
+    }
+
     /**
      * Get the schema of the database. Result format is : 
      * {
@@ -302,12 +345,12 @@ class VeloxDatabase {
             client.transaction((tx, done)=>{
                 this._prepareClient(client) ;
                 callbackDoTransaction(client, done) ;
-            }, (err)=>{
+            }, function(err){ //explicit use of function instead of arrow to have argument variable
                 client.close() ;
                 if(err){ 
                     return callbackDone(err) ;
                 }
-                callbackDone() ;
+                callbackDone.apply(null, arguments) ;
             }, timeout) ;
         }) ;
     }

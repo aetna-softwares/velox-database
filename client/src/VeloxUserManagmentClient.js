@@ -15,6 +15,7 @@
      * @typedef VeloxUserManagmentClientOptions
      * @type {object}
      * @property {string} [authEndPoint] the auth entry point (default: auth)
+     * @property {string} [googleAuthEndPoint] the auth entry point (default: auth/google)
      * @property {string} [refreshEndPoint] the refresh user entry point (default: refreshUser)
      * @property {string} [createEndPoint] the refresh user entry point (default: createUser)
      * @property {string} [logoutEndPoint] the auth entry point (default: logout)
@@ -40,7 +41,7 @@
         }
 
         //add auth api entry
-        var authEndPoint = client.options.authEndPoint || "auth" ;
+        var authEndPoint = client.options.authEndPoint || "auth/user" ;
         var ajaxAuth = client._createEndPointFunction(authEndPoint , "POST", [ "username", "password" ]) ;
         var authFun = function(username, password, callback){
             ajaxAuth.bind(client)(username, password, function(err, user){
@@ -55,6 +56,23 @@
             }.bind(client)) ;
         } ;
         client._registerEndPointFunction(authEndPoint, authFun) ;
+        
+        //add auth api entry
+        var googleAuthEndPoint = client.options.googleAuthEndPoint || "auth/google" ;
+        var ajaxGoogleAuth = client._createEndPointFunction(googleAuthEndPoint , "POST", [ "id_token" ]) ;
+        var authGoogleFun = function(token, callback){
+            ajaxGoogleAuth.bind(client)(token, function(err, user){
+                if(err){
+                    this.currentUser = null;
+                    localStorage.removeItem(userKey) ;
+                    return callback(err) ;
+                }
+                this.currentUser = user;
+                localStorage.setItem(userKey, JSON.stringify(user)) ;
+                callback(null, user) ;
+            }.bind(client)) ;
+        } ;
+        client._registerEndPointFunction(googleAuthEndPoint, authGoogleFun) ;
         
         //add refresh user api entry
         var refreshEndPoint = client.options.refreshEndPoint || "refreshUser" ;
@@ -92,10 +110,20 @@
             ajaxLogout.bind(client)(function(err){
                 localStorage.removeItem(userKey) ;
                 this.currentUser = null;
-                if(err){
-                    return callback(err) ;
+                if(window.gapi && window.gapi.auth2.getAuthInstance()){
+                    //logged with google, sign out from google auth instance too
+                    window.gapi.auth2.getAuthInstance().signOut().then(function () {
+                        if(err){
+                            return callback(err) ;
+                        }
+                        callback() ;
+                    });
+                }else{
+                    if(err){
+                        return callback(err) ;
+                    }
+                    callback() ;
                 }
-                callback() ;
             }.bind(client)) ;
         } ;
         client._registerEndPointFunction(logoutEndPoint, logoutFun) ;

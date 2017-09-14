@@ -1,7 +1,8 @@
 const bcrypt = require("bcrypt") ;
 const uuid = require("uuid") ;
 const LocalStrategy = require('passport-local').Strategy ;
-var GoogleStrategy = require('passport-google-oauth').OAuth2Strategy;
+var GoogleTokenStrategy = require('./google/PassportGoogleTokenStrategy');
+
 const FAKE_PASSWORD = "*********" ;
 
 /**
@@ -49,12 +50,7 @@ class VeloxUserManagment{
      * @typedef VeloxUserManagmentGoogleOptions
      * @type {object}
      * @property {string} clientID Google client ID
-     * @property {string} clientSecret Google client secret
-     * @property {string} serverBaseURL serverBaseUrl
-     * @property {string} failureRedirect auth failure redirect
-     * @property {string} successRedirect auth success redirect
      * @property {string} [authEndPoint] the login authentication end point (default : "/auth/google")
-     * @property {string} [callbackEndPoint] the callback end point (default : "/auth/google/callback")
      */
 
 
@@ -71,7 +67,7 @@ class VeloxUserManagment{
      * @property {string} [usernameField] the username field name in login form (default : username)
      * @property {string} [passwordField] the password field name in login form (default : password)
      * @property {string} [realmField] the realm field name in login form (default : realm)
-     * @property {string} [authEndPoint] the login authentication end point (default : "/auth")
+     * @property {string} [authEndPoint] the login authentication end point (default : "/auth/user")
      * @property {string} [logoutEndPoint] the logout end point (default : "/logout")
      * @property {string} [refreshEndPoint] the refresh user end point (default : "/refreshUser")
      * @property {string} [activateEndPoint] the activation user end point (default : "/activateUser")
@@ -123,6 +119,10 @@ class VeloxUserManagment{
                 //this is the VeloxDatabase object
                 self.authenticateUser(this, login, password, realm, callback) ;
             },
+            authenticateGoogle : function(token, callback){
+                //this is the VeloxDatabase object
+                self.authenticateGoogleUser(this, token, callback) ;
+            },
             activate : function(activationToken, password, callback){
                 //this is the VeloxDatabase object
                 self.activateUser(this, activationToken, password, callback) ;
@@ -172,25 +172,29 @@ class VeloxUserManagment{
                 }));
 
                 if(options.google){
-                    passport.use(new GoogleStrategy({
-                        clientID        : options.google.clientID,
-                        clientSecret    : options.google.clientSecret,
-                        callbackURL     : options.google.serverBaseURL+(options.google.callbackEndPoint || "/auth/google/callback"),
+
+                    passport.use(new GoogleTokenStrategy({
+                        clientID: options.google.clientID
                     },
-                    (token, refreshToken, profile, done) => {
+                      (parsedToken, googleId, done)=> {
                         this.db.transaction((tx, done)=>{
-                            tx.searchFirst("velox_user", {uid: profile.id, auth_type:"google"}, (err, user)=>{
+                            tx.searchFirst("velox_user", {login: googleId, auth_type:"google"}, (err, user)=>{
                                 if(err){ return done(err) ;}
                                 if(user) { return done(null, user) ;}
                                 var newUser = {} ;
-                                newUser.uid = profile.id ;
-                                newUser.name  = profile.displayName;
+                                newUser.uid = uuid.v4() ;
+                                newUser.login = googleId ;
+                                newUser.name  = parsedToken.name;
                                 newUser.auth_type = "google" ;
-                                newUser.email = profile.emails[0].value; // pull the first email
-                                tx.insert(newUser, done) ;
+                                newUser.email = parsedToken.email;
+                                newUser.active = true;
+                                newUser.disabled = false;
+                                //parsedToken.locale (contains fr)
+                                tx.insert("velox_user",newUser, done) ;
                             }) ;
                         }, done) ;
-                    }));
+                      }
+                    ));
                 }
 
 
@@ -326,19 +330,22 @@ class VeloxUserManagment{
                 }
 
                 return function(req, res, next){
-                    if(req.url.indexOf(globalOptions.authEndPoint || "/auth") === 0){
+                    if(req.url.indexOf(globalOptions.authEndPoint || "/auth/user") === 0){
                         return next(); //always accept auth endpoint
+                    }
+                    if(globalOptions.google && req.url.indexOf(globalOptions.google.authEndPoint || "/auth/google") === 0){
+                        return next(); //always accept google auth endpoint
                     }
                     if(req.url.indexOf(globalOptions.logoutEndPoint|| "/logout") === 0){
                         return next(); //always accept logout endpoint
                     }
                     if(req.url.indexOf(globalOptions.createUser|| "/createUser") === 0){
-                        return next(); //always accept logout endpoint
+                        return next(); //always accept create user endpoint
                     }
 
                     if(!options.makeSchemaPrivate){
                         if(req.url.indexOf(globalDatabaseOptions.dbEntryPoint+"/schema") === 0){
-                            return next(); //always accept logout endpoint
+                            return next(); //always accept schema endpoint
                         }
                     }
                     
@@ -384,7 +391,7 @@ class VeloxUserManagment{
                 app.use(this.getSessionCheckMiddleware(options.sessionCheck, globalDatabaseOptions)) ;
                 
 
-                app.post(options.authEndPoint || "/auth",
+                app.post(options.authEndPoint || "/auth/user",
                     passport.authenticate('local'),
                     function(req, res) {
                         // If this function gets called, authentication was successful.
@@ -425,14 +432,12 @@ class VeloxUserManagment{
                 if(options.google){
                     //google authentication is activated
 
-                    app.get(options.google.authEndPoint || '/auth/google',
-                        passport.authenticate('google', { scope: ['profile', 'email'] }));
-                    
-                    app.get(options.google.callbackEndPoint || '/auth/google/callback', 
-                        passport.authenticate('google', { failureRedirect: options.google.failureRedirect }),
+                    app.post(options.google.authEndPoint || '/auth/google',
+                        passport.authenticate('google-id-token'),
                         function(req, res) {
-                            // Successful authentication, redirect home.
-                            res.redirect(options.google.successRedirect);
+                            // If this function gets called, authentication was successful.
+                            // `req.user` contains the authenticated user.
+                            res.json(req.user);
                     });
                 }
 
@@ -487,6 +492,27 @@ class VeloxUserManagment{
         records.forEach(function(record){
             record.password = FAKE_PASSWORD ;
         });
+    }
+
+    authenticateGoogleUser(db, token, callback){
+        if(!this.options.google || !this.options.google.clientID){
+            return callback("Google CLIENT ID missing") ;
+        }
+        //see documentation https://developers.google.com/identity/sign-in/web/backend-auth
+        var auth = new GoogleAuth;
+        var client = new auth.OAuth2(this.options.google.clientID, '', '');
+        client.verifyIdToken(
+            token,
+            this.options.google.clientID,
+            function(err, login) {
+                if(err){ return callback(err); }
+
+                var payload = login.getPayload();
+                callback(null, payload) ;
+                var userid = payload['sub'];
+                // If request specified a G Suite domain:
+                //var domain = payload['hd'];
+            });
     }
 
     /**
