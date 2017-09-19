@@ -219,23 +219,28 @@ class VeloxDbPgClient {
             }else{
                 a = a+"_" ;
             }
+
             for(let pk of schema[table].pk){
-                pkValue += r[a+pk];
+                pkValue += r[a+pk] || "";
             }
-            let index = pkIndexes[pkValue] ;
-            if(index === undefined){
-                index = recordsByPk.length ;
-                pkIndexes[pkValue] = index;
-                var record = {} ;
-                for(let col of schema[table].columns){
-                    record[col.name] = r[a+col.name] ;
+            if(pkValue){
+                //on some JOIN cases, the record can be present because of the JOIN but all values are null
+                //don't add a record in this case
+                let index = pkIndexes[pkValue] ;
+                if(index === undefined){
+                    index = recordsByPk.length ;
+                    pkIndexes[pkValue] = index;
+                    var record = {} ;
+                    for(let col of schema[table].columns){
+                        record[col.name] = r[a+col.name] ;
+                    }
+                    recordsByPk.push({
+                        record: record,
+                        rows : []
+                    }) ;
                 }
-                recordsByPk.push({
-                    record: record,
-                    rows : []
-                }) ;
+                recordsByPk[index].rows.push(r) ;
             }
-            recordsByPk[index].rows.push(r) ;
         }
 
         //do a first loop to initialize the thisTable property because be dig inside sub join, it will provoque ambiguity
