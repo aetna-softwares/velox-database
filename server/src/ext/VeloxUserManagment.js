@@ -113,7 +113,17 @@ class VeloxUserManagment{
             this.adminUser.uid = uuid.v4() ;
         }
 
+        if(this.adminUser.active === undefined){
+            this.adminUser.active = true ;
+        }
+
         var self = this;
+        this.extendsClient = {
+            createUser : function(user, callback){
+                //this is the VeloxDatabaseClient object
+                self.createUserInTransaction(this, user, callback) ;
+            },
+        };
         this.extendsProto = {
             authenticate : function(login, password, realm, callback){
                 //this is the VeloxDatabase object
@@ -413,9 +423,9 @@ class VeloxUserManagment{
                             res.json(user) ;
                         }) ;
                 });
-                app.get(options.activateEndPoint || "/activateUser",
+                app.post(options.activateEndPoint || "/activateUser",
                     (req, res) => {
-                        this.db.activate(req.activationToken, req.password, (err, user)=>{
+                        this.db.activate(req.body.activationToken, req.body.password, (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
@@ -602,6 +612,19 @@ class VeloxUserManagment{
      * @param {function(err, user)} callback called with created user if succeed
      */
     createUser(db, user, callback){
+        db.transaction((client, done)=>{
+            this.createUserInTransaction(client, user, done) ;
+        }, callback) ;
+    }
+   
+    /**
+     * Create a new user
+     * 
+     * @param {VeloxDatabaseClient} client the db client access
+     * @param {object} user the user to create
+     * @param {function(err, user)} callback called with created user if succeed
+     */
+    createUserInTransaction(client, user, callback){
         delete user.profile_code; //remove profile code if someone is trying to inject it
         if(this.options.mustActivate){
             user.active = false ;
@@ -610,9 +633,7 @@ class VeloxUserManagment{
             user.active = true ;
         }
         if(!user.uid){ user.uid = uuid.v4() ; }
-        db.transaction((client, done)=>{
-            client.insert("velox_user", user, done) ;
-        }, callback) ;
+        client.insert("velox_user", user, callback) ;
     }
 
     /**
@@ -637,13 +658,13 @@ class VeloxUserManagment{
                 if(err){ return done(err); }
 
                 if(results.rows.length === 0){
-                    return done(null, false) ;
+                    return done("Invalid token") ;
                 }
 
                 if(results.rows.length > 1){
                     //there is a problem in the configuration somewhere
                     db.logger.error("The activation token "+activationToken+" exists many times ") ;
-                    return done(null, false) ;
+                    return done("Invalid token") ;
                 }
 
                 let user = results.rows[0] ;

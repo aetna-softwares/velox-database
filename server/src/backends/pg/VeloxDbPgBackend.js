@@ -95,6 +95,10 @@ class VeloxDbPgClient {
             params = [];
         }
         this.logger.debug("Run SQL "+sql+", params "+JSON.stringify(params)) ;
+        let lowerSql = sql.toLowerCase() ;
+        if(lowerSql.indexOf("create") || lowerSql.indexOf("alter")){
+            delete this.cache.schema ;
+        }
         this.connection.query(sql, params, callback) ;
     }
 

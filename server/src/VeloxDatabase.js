@@ -92,6 +92,12 @@ class VeloxDatabase {
                 });
             }
         }
+
+        for(let extension of VeloxDatabase.extensions){
+            if(extension.init){
+                extension.init(this) ;
+            }
+        }
     }
 
     /**
@@ -126,6 +132,140 @@ class VeloxDatabase {
      * @param {VeloxDatabaseClient} client database client
      */
     _prepareClient(client){
+        client.changes = function(changeSet, done){
+            let tx = this ;
+            let results = [] ;
+            let recordCache = {};
+            let updatePlaceholder = (record)=>{
+                if(typeof(record) === "object"){
+                    for(let k of Object.keys(record)){
+                        if(record[k] && typeof(record[k]) === "string" && record[k].indexOf("${") === 0){
+                            //this record contains ${table.field} that must be replaced by the real value of last inserted record of this table                        
+                            let [othertable, otherfield] = record[k].replace("${", "").replace("}", "").split(".") ;
+                            if(recordCache[othertable]){
+                                record[k] = recordCache[othertable][otherfield] ;
+                            }
+                        }
+                    }
+                }
+            } ;
+            let job = new AsyncJob(AsyncJob.SERIES) ;
+            
+            for(let change of changeSet){
+                let record = change.record ;
+                
+                let table = change.table ;
+                let action = change.action ;
+                if(action === "insert"){
+                    job.push((cb)=>{
+                        updatePlaceholder(record) ;
+                        tx.insert(table, record, (err, insertedRecord)=>{
+                            if(err){ return cb(err); }
+                            results.push({
+                                action: "insert",
+                                table : table,
+                                record: insertedRecord
+                            }) ;
+                            recordCache[table] = insertedRecord ;
+                            cb() ;
+                        }) ;
+                    });
+                }
+                if(action === "update"){
+                    job.push((cb)=>{
+                        updatePlaceholder(record) ;
+                        tx.update(table, record, (err, updatedRecord)=>{
+                            if(err){ return cb(err); }
+                            results.push({
+                                action: "update",
+                                table : table,
+                                record: updatedRecord
+                            }) ;
+                            recordCache[table] = updatedRecord ;
+                            cb() ;
+                        }) ;
+                    });
+                }
+                if(action === "remove"){
+                    job.push((cb)=>{
+                        updatePlaceholder(record) ;
+                        tx.remove(table, record, (err)=>{
+                            if(err){ return cb(err); }
+                            results.push({
+                                action: "remove",
+                                table : table
+                            }) ;
+                            cb() ;
+                        }) ;
+                    });
+                }
+                if(!action || action === "auto"){
+                    job.push((cb)=>{
+                        updatePlaceholder(record) ;
+                        tx.getPrimaryKey(table, (err, primaryKey)=>{
+                            if(err) { return cb(err) ;}
+                            let hasPkValue = true ;
+                            if(Object.keys(record).length < primaryKey.length){
+                                hasPkValue = false;
+                            }
+                            for(let k of primaryKey){
+                                if(Object.keys(record).indexOf(k) === -1){
+                                    hasPkValue = false ;
+                                    break;
+                                }
+                            }
+                            if(hasPkValue){
+                                //has PK value
+                                tx.getByPk(table, record, (err, recordDb)=>{
+                                    if(err) { return cb(err) ;}
+                                    if(recordDb){
+                                        //already exists, update
+                                        tx.update(table, record, (err, updatedRecord)=>{
+                                            if(err){ return cb(err); }
+                                            results.push({
+                                                action: "update",
+                                                table : table,
+                                                record: updatedRecord
+                                            }) ;
+                                            recordCache[table] = updatedRecord ;
+                                            cb() ;
+                                        });
+                                    }else{
+                                        //not exists yet, insert
+                                        tx.insert(table, record, (err, insertedRecord)=>{
+                                            if(err){ return cb(err); }
+                                            results.push({
+                                                action: "insert",
+                                                table : table,
+                                                record: insertedRecord
+                                            }) ;
+                                            recordCache[table] = insertedRecord ;
+                                            cb() ;
+                                        }) ;
+                                    }
+                                }) ;
+                            }else{
+                                //no pk in the record, insert
+                                tx.insert(table, record, (err, insertedRecord)=>{
+                                    if(err){ return cb(err); }
+                                    results.push({
+                                        action: "insert",
+                                        table : table,
+                                        record: insertedRecord
+                                    }) ;
+                                    recordCache[table] = insertedRecord ;
+                                    cb() ;
+                                });
+                            }
+                        }) ;
+                    });
+                }
+            }
+            job.async((err)=>{
+                if(err){ return done(err) ;}
+                done(null, results) ;
+            }) ;
+        } ;
         for(let extension of VeloxDatabase.extensions){
             if(extension.extendsClient){                
                 Object.keys(extension.extendsClient).forEach((key)=> {
@@ -162,7 +302,7 @@ class VeloxDatabase {
                                     args = Array.prototype.slice.call(arguments) ;
                                     args = args.splice(1) ;
                                     callInterceptor(interception.after, args, (err)=>{
-                                        if(err){ realCallback(err); }
+                                        if(err){ return realCallback(err); }
                                         realCallback.apply(null, [null].concat(args)) ;
                                     }) ;
                                 }.bind(this)])) ;
@@ -339,6 +479,7 @@ class VeloxDatabase {
      *
      */
     transaction(callbackDoTransaction, callbackDone, timeout){ 
+        if(!callbackDone){ callbackDone = function(){} ;}
         this.backend.open((err, client)=>{
             if(err){ return callbackDone(err) ;}
             
@@ -444,136 +585,10 @@ class VeloxDatabase {
      * @param {function(Error)} callback called on finish
      */
     transactionalChanges(changeSet, callback){
-        let results = [] ;
-        let recordCache = {};
-        let updatePlaceholder = (record)=>{
-            if(typeof(record) === "object"){
-                for(let k of Object.keys(record)){
-                    if(record[k] && typeof(record[k]) === "string" && record[k].indexOf("${") === 0){
-                        //this record contains ${table.field} that must be replaced by the real value of last inserted record of this table                        
-                        let [othertable, otherfield] = record[k].replace("${", "").replace("}", "").split(".") ;
-                        if(recordCache[othertable]){
-                            record[k] = recordCache[othertable][otherfield] ;
-                        }
-                    }
-                }
-            }
-        } ;
+        
         this.transaction((tx, done)=>{
-            let job = new AsyncJob(AsyncJob.SERIES) ;
-            
-            for(let change of changeSet){
-                let record = change.record ;
-                
-                let table = change.table ;
-                let action = change.action ;
-                if(action === "insert"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.insert(table, record, (err, insertedRecord)=>{
-                            if(err){ return cb(err); }
-                            results.push({
-                                action: "insert",
-                                table : table,
-                                record: insertedRecord
-                            }) ;
-                            recordCache[table] = insertedRecord ;
-                            cb() ;
-                        }) ;
-                    });
-                }
-                if(action === "update"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.update(table, record, (err, updatedRecord)=>{
-                            if(err){ return cb(err); }
-                            results.push({
-                                action: "update",
-                                table : table,
-                                record: updatedRecord
-                            }) ;
-                            recordCache[table] = updatedRecord ;
-                            cb() ;
-                        }) ;
-                    });
-                }
-                if(action === "remove"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.remove(table, record, (err)=>{
-                            if(err){ return cb(err); }
-                            results.push({
-                                action: "remove",
-                                table : table
-                            }) ;
-                            cb() ;
-                        }) ;
-                    });
-                }
-                if(!action || action === "auto"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.getPrimaryKey(table, (err, primaryKey)=>{
-                            if(err) { return cb(err) ;}
-                            let hasPkValue = true ;
-                            if(Object.keys(record).length < primaryKey.length){
-                                hasPkValue = false;
-                            }
-                            for(let k of primaryKey){
-                                if(Object.keys(record).indexOf(k) === -1){
-                                    hasPkValue = false ;
-                                    break;
-                                }
-                            }
-                            if(hasPkValue){
-                                //has PK value
-                                tx.getByPk(table, record, (err, recordDb)=>{
-                                    if(err) { return cb(err) ;}
-                                    if(recordDb){
-                                        //already exists, update
-                                        tx.update(table, record, (err, updatedRecord)=>{
-                                            if(err){ return cb(err); }
-                                            results.push({
-                                                action: "update",
-                                                table : table,
-                                                record: updatedRecord
-                                            }) ;
-                                            recordCache[table] = updatedRecord ;
-                                            cb() ;
-                                        });
-                                    }else{
-                                        //not exists yet, insert
-                                        tx.insert(table, record, (err, insertedRecord)=>{
-                                            if(err){ return cb(err); }
-                                            results.push({
-                                                action: "insert",
-                                                table : table,
-                                                record: insertedRecord
-                                            }) ;
-                                            recordCache[table] = insertedRecord ;
-                                            cb() ;
-                                        }) ;
-                                    }
-                                }) ;
-                            }else{
-                                //no pk in the record, insert
-                                tx.insert(table, record, (err, insertedRecord)=>{
-                                    if(err){ return cb(err); }
-                                    results.push({
-                                        action: "insert",
-                                        table : table,
-                                        record: insertedRecord
-                                    }) ;
-                                    recordCache[table] = insertedRecord ;
-                                    cb() ;
-                                });
-                            }
-                        }) ;
-                    });
-                }
-            }
-            job.async(done) ;
-        }, (err)=>{
+            tx.changes(changeSet, done) ;
+        }, (err, results)=>{
             if(err) { return callback(err) ;}
             callback(null, results) ;
         }) ;

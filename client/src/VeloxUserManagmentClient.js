@@ -15,6 +15,7 @@
      * @typedef VeloxUserManagmentClientOptions
      * @type {object}
      * @property {string} [authEndPoint] the auth entry point (default: auth)
+     * @property {string} [activateEndPoint] the activate entry point (default: activateUser)
      * @property {string} [googleAuthEndPoint] the auth entry point (default: auth/google)
      * @property {string} [refreshEndPoint] the refresh user entry point (default: refreshUser)
      * @property {string} [createEndPoint] the refresh user entry point (default: createUser)
@@ -56,6 +57,19 @@
             }.bind(client)) ;
         } ;
         client._registerEndPointFunction(authEndPoint, authFun) ;
+
+        //add auth api entry
+        var activateEndPoint = client.options.activateEndPoint || "activateUser" ;
+        var ajaxActivate = client._createEndPointFunction(activateEndPoint , "POST", [ "activationToken", "password" ]) ;
+        var activateFun = function(token, password, callback){
+            ajaxActivate.bind(client)(token, password, function(err, user){
+                if(err){
+                    return callback(err) ;
+                }
+                callback(null, user) ;
+            }.bind(client)) ;
+        } ;
+        client._registerEndPointFunction(activateEndPoint, activateFun) ;
         
         //add auth api entry
         var googleAuthEndPoint = client.options.googleAuthEndPoint || "auth/google" ;
