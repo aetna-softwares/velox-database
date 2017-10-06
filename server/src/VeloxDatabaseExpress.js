@@ -88,6 +88,17 @@ class VeloxDatabaseExpress {
     }
 
     /**
+     * 
+     * @param {VeloxDatabaseClient} client the database client instance
+     * @param {HttpRequest} req the current HTTP request
+     */
+    _setContext(client, req){
+        client.context = {
+            req: req
+        } ;
+    }
+
+    /**
      * Give back the express middleware 
      * 
      * @example
@@ -121,7 +132,10 @@ class VeloxDatabaseExpress {
                         res.status(200).json(result) ;
                     }) ;
                 } else if(table === "transactionalChanges"){
-                    this.db.transactionalChanges(record, (err, modifiedRecord)=>{
+                    this.db.transaction((tx, done)=>{
+                        this._setContext(tx, req) ;
+                        tx.changes(record, done) ;
+                    }, (err, modifiedRecord)=>{
                         if(err){ return res.status(500).end(this._formatErr(err)) ; }
                         res.status(200).json(modifiedRecord) ;
                     }) ;
@@ -129,7 +143,10 @@ class VeloxDatabaseExpress {
                     res.status(200).json(schema) ;
                 } else if(table === "multiread"){
                     let reads = record;
-                    this.db.multiread(reads, (err, results)=>{
+                    this.db.inDatabase((client, done)=>{
+                        this._setContext(client, req) ;
+                        client.multiread(reads, done) ;
+                    }, (err, results)=>{
                         if(err){ return res.status(500).end(this._formatErr(err)) ; }
                         res.status(200).json(results) ;
                     }) ;
@@ -150,7 +167,8 @@ class VeloxDatabaseExpress {
                     }
 
                     if(req.method === "POST"){
-                        this.db.inDatabase((client, done)=>{
+                        this.db.transaction((client, done)=>{
+                            this._setContext(client, req) ;
                             client.insert(table, record, done) ;
                         }, (err, insertedRecord)=>{
                             if(err){ return res.status(500).end(this._formatErr(err)) ; }
@@ -166,7 +184,8 @@ class VeloxDatabaseExpress {
                         for(let k of Object.keys(pk)){
                             record[k] = pk[k] ;
                         }
-                        this.db.inDatabase((client, done)=>{
+                        this.db.transaction((client, done)=>{
+                            this._setContext(client, req) ;
                             client.update(table, record, done) ;
                         }, (err, updatedRecord)=>{
                             if(err){ return res.status(500).end(this._formatErr(err)) ; }
@@ -179,7 +198,8 @@ class VeloxDatabaseExpress {
                         if(Object.keys(pk).length !== schema[table].pk.length) {
                             return res.status(500).end("wrong pk, expected "+schema[table].pk.join(", ")) ;
                         }
-                        this.db.inDatabase((client, done)=>{
+                        this.db.transaction((client, done)=>{
+                            this._setContext(client, req) ;
                             client.remove(table, pk, done) ;
                         }, (err, insertedRecord)=>{
                             if(err){ return res.status(500).end(this._formatErr(err)) ; }
@@ -192,6 +212,7 @@ class VeloxDatabaseExpress {
                                 return res.status(500).end("wrong pk, expected "+schema[table].pk.join(", ")) ;
                             }
                             this.db.inDatabase((client, done)=>{
+                                this._setContext(client, req) ;
                                 var joinFetch = null;
                                 if(req.query.joinFetch){
                                     joinFetch = JSON.parse(req.query.joinFetch) ;
@@ -205,6 +226,7 @@ class VeloxDatabaseExpress {
                             try{
                                 let search = JSON.parse(req.query["search"]) ;
                                 this.db.inDatabase((client, done)=>{
+                                    this._setContext(client, req) ;
                                     client.search(table, search.conditions, search.joinFetch, search.orderBy, search.offset, search.limit, done) ;
                                 }, (err, foundRecords)=>{
                                     if(err){ return res.status(500).end(this._formatErr(err)) ; }
@@ -217,6 +239,7 @@ class VeloxDatabaseExpress {
                             try{
                                 let search = JSON.parse(req.query["searchFirst"]) ;
                                 this.db.inDatabase((client, done)=>{
+                                    this._setContext(client, req) ;
                                     client.searchFirst(table, search.conditions, search.joinFetch, search.orderBy, done) ;
                                 }, (err, foundRecords)=>{
                                     if(err){ return res.status(500).end(this._formatErr(err)) ; }

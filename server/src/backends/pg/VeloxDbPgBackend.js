@@ -96,7 +96,7 @@ class VeloxDbPgClient {
         }
         this.logger.debug("Run SQL "+sql+", params "+JSON.stringify(params)) ;
         let lowerSql = sql.toLowerCase() ;
-        if(lowerSql.indexOf("create") || lowerSql.indexOf("alter")){
+        if(lowerSql.indexOf("create") != -1 || lowerSql.indexOf("alter") != -1 ){
             delete this.cache.schema ;
         }
         this.connection.query(sql, params, callback) ;
@@ -125,8 +125,25 @@ class VeloxDbPgClient {
         }) ;
     }
 
+    /**
+     * If you want to get a subquery instead of table, implement getTable_your_table_name function
+     * 
+     * @example
+     * this.extendsClient = {
+     *    getTable_foo = function(){ return "(select * from foo where restricted = false)" ;}
+     * }
+     * 
+     * @param {string} table 
+     */
+    getTable(table){
+        if(this["getTable_"+table]){
+            return this["getTable_"+table]() ;
+        }
+        return table;
+    }
+
     _createFromWithJoin(table, joinFetch, schema){
-        let from = [`${table} t`] ;
+        let from = [`${this.getTable(table)} t`] ;
         let select = ["t.*"] ;
         let aliases = {} ;
         aliases[table] = "t" ;

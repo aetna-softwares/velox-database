@@ -53,6 +53,17 @@ class VeloxUserManagment{
      * @property {string} [authEndPoint] the login authentication end point (default : "/auth/google")
      */
 
+     /**
+     * @typedef VeloxUserManagmentRestriction
+     * @type {object}
+     * @property {string} name the table name
+     * @property {string} [realmCol] the name of the column containing realm code. It this option is set, the queries will be filtered on record linked to the realm to which the user has right
+     * @property {int} [insertMinProfileLevel] the minimum profile level required to do insert action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
+     * @property {int} [updateMinProfileLevel] the minimum profile level required to do update action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
+     * @property {int} [removeMinProfileLevel] the minimum profile level required to do remove action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
+     * @property {int} [minProfileLevel] shortcut to set insertMinProfileLevel, updateMinProfileLevel, removeMinProfileLevel at once
+     */
+
 
     /**
      * @typedef VeloxUserManagmentOption
@@ -61,8 +72,12 @@ class VeloxUserManagment{
      * @property {Array} [profileMeta] Meta data to add on profile table : [{name: "foo", type: "varchar(128)"}, {name: "bar", type: "int"}]
      * @property {object} [adminUser] The admin user to create on database creation
      * @property {object} [adminProfile] The admin profile to create on database creation
+     * @property {object} [fixedProfiles] List of profiles to create by default in database
      * @property {object[]} [defaultRealms] The default realms to create
      * @property {boolean} [dontCreateAdmin] set to true if you don't want the admin automatic creation
+     * @property {boolean} [useProfile] set to true if your user management use profile. default : false of no adminProfile and no fixedProfile, true elsewhere
+     * @property {boolean} [useRealm] set to true if your user management use realms. default : false of no defaultRealms, true elsewhere
+     * @property {VeloxUserManagmentRestriction[]} [restrictedTables] add database restriction check on tables
      * @property {string} [sessionSecret] the session secret salt phrase for express middleware
      * @property {string} [usernameField] the username field name in login form (default : username)
      * @property {string} [passwordField] the password field name in login form (default : password)
@@ -97,7 +112,18 @@ class VeloxUserManagment{
         this.adminProfile = options.adminProfile || null ;
         this.defaultRealms = options.defaultRealms || null ;
         this.adminUser = options.adminUser || {login: "admin", password: "admin", name: "Administrator", auth_type: "password"} ;
-
+        this.useProfile = options.useProfile ;
+        if(this.useProfile === undefined){
+            if(this.adminProfile || this.fixedProfiles){
+                this.useProfile = true;
+            }
+        }
+        this.useRealm = options.useRealm ;
+        if(this.useRealm === undefined){
+            if(this.defaultRealms){
+                this.useRealm = true;
+            }
+        }
         if(this.adminProfile){
             if(typeof(this.adminProfile) === "string"){
                 //just give the code, profile should be in fixedProfile list
@@ -457,10 +483,191 @@ class VeloxUserManagment{
         this.interceptClientQueries = [
             {name : "insert", table: "velox_user", before : this.beforeInsertOrUpdate, after: this.removePassword },
             {name : "update", table: "velox_user", before : this.beforeInsertOrUpdate, after: this.removePassword },
+            {name : "remove", table: "velox_user", before : this.beforeCheckUserAllowed, after: this.removePassword },
+            {name : "insert", table: "velox_link_user_realm", before : this.beforeCheckUserRealmAllowed },
+            {name : "update", table: "velox_link_user_realm", before : this.beforeCheckUserRealmAllowed },
+            {name : "remove", table: "velox_link_user_realm", before : this.beforeCheckUserRealmAllowed },
             {name : "getByPk", table: "velox_user", after : this.removePassword },
             {name : "searchFirst", table: "velox_user", after : this.removePassword },
             {name : "search", table: "velox_user", after : this.removePassword },
         ] ;
+
+        this.extendsClient = {
+            getTable_velox_user : function(){
+                var client = this ; //this is the db client
+                if(client.context && client.context.req && client.context.req.user){
+                    if(self.useProfile && self.useRealm) {
+                        //must restrict read of users of same realms and profile same or lower
+                        return `
+                            (SELECT *
+                            FROM
+                            (SELECT DISTINCT u.*
+                            FROM velox_user u
+                            JOIN velox_link_user_realm l ON u.uid = l.user_uid
+                            JOIN velox_user_profile p ON p.code = l.profile_code
+                            JOIN velox_link_user_realm r ON l.realm_code = r.realm_code
+                            JOIN velox_user_profile pc ON pc.code = r.profile_code
+                            WHERE r.user_uid = '${client.context.req.user.uid}'
+                                AND p.level>=pc.level ) AS velox_user)
+                        `;
+                    } else if(self.useRealm) {
+                        //must restrict read of users of same realms
+                        return `
+                            (SELECT *
+                            FROM
+                            (SELECT DISTINCT u.*
+                            FROM velox_user u
+                            JOIN velox_link_user_realm l ON u.uid = l.user_uid
+                            JOIN velox_link_user_realm r ON l.realm_code = r.realm_code
+                            WHERE r.user_uid = '${client.context.req.user.uid}' ) AS velox_user)
+                        `;
+                    } else {
+                        return "velox_user" ;
+                    }
+                    
+                }else{
+                    return "velox_user" ;
+                }
+            }
+        } ;
+        if(this.options.restrictedTables){
+            for(let table of this.options.restrictedTables){
+                if(table.realmCol){
+                    this.extendsClient["getTable_"+table.name] = function(){
+                        var client = this ; //this is the db client
+                        if(client.context && client.context.req && client.context.req.user){
+                            return `
+                                (SELECT DISTINCT t.*
+                                FROM
+                                ${table.name} t
+                                JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
+                                WHERE r.user_uid = '${client.context.req.user.uid}')
+                            `;
+                        }else{
+                            return table.name ;
+                        }
+                    } ;
+                }
+                var insertMinProfileLevel = table.insertMinProfileLevel;
+                var updateMinProfileLevel = table.updateMinProfileLevel;
+                var removeMinProfileLevel = table.removeMinProfileLevel;
+                if(table.minProfileLevel){
+                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.minProfileLevel:insertMinProfileLevel;
+                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.minProfileLevel:updateMinProfileLevel;
+                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.minProfileLevel:removeMinProfileLevel;
+                }
+                if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel){
+                    var createRestrictFunction = function(table, minLevel){
+                        return function(tableName, record, callback){
+                            if(this.context && this.context.req && this.context.req.user){
+                                //check current user is allowed on this realm
+                                this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid},[{otherTable: "velox_user_profile", name: "profile"}], (err, currentUserRealms)=>{
+                                    if(err){ return callback(err) ;}
+                                    let thisRealmLines = currentUserRealms;
+                                    if(table.realmCol){
+                                        thisRealmLines = [];
+                                        currentUserRealms.forEach((r)=>{
+                                            if(r.realm_code === record[table.realmCol]){
+                                                thisRealmLines.push(r) ;
+                                            }
+                                        }) ;
+                                    }
+                                    
+                                    if(thisRealmLines.length === 0){
+                                        return callback("You are not allowed for "+tableName) ;
+                                    }
+    
+                                    let profileOk = thisRealmLines.some((r)=>{
+                                        return r.profile.level <= minLevel ;
+                                    });
+                                    if(profileOk){
+                                        callback();
+                                    }else{
+                                        callback("You are not allowed for "+tableName) ;
+                                    }
+                                }) ;
+                            }else{
+                                callback() ;
+                            }
+                        } ;
+                    };
+                    if(insertMinProfileLevel !== undefined){
+                        this.interceptClientQueries.push(
+                            {name : "insert", table: table.name, before : createRestrictFunction(table, insertMinProfileLevel) }
+                        );
+                    }
+                    if(updateMinProfileLevel !== undefined){
+                        this.interceptClientQueries.push(
+                            {name : "update", table: table.name, before : createRestrictFunction(table, updateMinProfileLevel) }
+                        );
+                    }
+                    if(removeMinProfileLevel !== undefined){
+                        this.interceptClientQueries.push(
+                            {name : "remove", table: table.name, before : createRestrictFunction(table, removeMinProfileLevel) }
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if the current user can interract with this user
+     * 
+     * @param {string} table table name
+     * @param {object} record user record
+     * @param {function} callback called on finished
+     */
+    beforeCheckUserAllowed(table, record, callback){
+        this.getByPk(table, record, function(err, foundUser){
+            if(err){ return callback(err) ;}
+            if(!foundUser){
+                //this user is not accessible from current user, don't allow to modify it
+                return callback("You are not allowed to modify this user") ;
+            }
+            callback() ;//ok user found in allowed user, accept it
+        }) ;
+    }
+
+    /**
+     * Check if the current user has enough rights on this realm and profile
+     * 
+     * @param {string} table table name
+     * @param {object} record user record
+     * @param {function} callback called on finished
+     */
+    beforeCheckUserRealmAllowed(table, record, callback){
+        if(this.context && this.context.req && this.context.req.user){
+            //check current user is allowed on this realm
+            this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid}, (err, currentUserRealms)=>{
+                if(err){ return callback(err) ;}
+                let thisRealmLine = null;
+                currentUserRealms.some((r)=>{
+                    if(r.realm_code === record.realm_code){
+                        thisRealmLine = r;
+                        return true ;
+                    }
+                }) ;
+                if(!thisRealmLine){
+                    return callback("You are not allowed on realm "+record.realm_code) ;
+                }
+                if(!record.profile_code){ return callback() ;}
+
+                //check current user has profile higher or equal to requested profile
+                this.searchFirst("velox_user_profile", {code : thisRealmLine.profile_code}, (err, currentUserProfile)=>{
+                    if(err){ return callback(err) ;}
+                    this.searchFirst("velox_user_profile", {code : record.profile_code}, (err, askedUserProfile)=>{
+                        if(err){ return callback(err) ;}
+                        if(currentUserProfile.level > askedUserProfile.level){
+                            return callback("You don't have access to profile "+askedUserProfile.code) ;
+                        }
+                        callback() ;
+                    }) ;
+                }) ;
+            }) ;
+        }else{
+            callback() ;
+        }
     }
 
     /**
