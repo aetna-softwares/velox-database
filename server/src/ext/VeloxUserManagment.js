@@ -492,44 +492,42 @@ class VeloxUserManagment{
             {name : "search", table: "velox_user", after : this.removePassword },
         ] ;
 
-        this.extendsClient = {
-            getTable_velox_user : function(){
-                var client = this ; //this is the db client
-                if(client.context && client.context.req && client.context.req.user){
-                    if(self.useProfile && self.useRealm) {
-                        //must restrict read of users of same realms and profile same or lower
-                        return `
-                            (SELECT *
-                            FROM
-                            (SELECT DISTINCT u.*
-                            FROM velox_user u
-                            JOIN velox_link_user_realm l ON u.uid = l.user_uid
-                            JOIN velox_user_profile p ON p.code = l.profile_code
-                            JOIN velox_link_user_realm r ON l.realm_code = r.realm_code
-                            JOIN velox_user_profile pc ON pc.code = r.profile_code
-                            WHERE r.user_uid = '${client.context.req.user.uid}'
-                                AND p.level>=pc.level ) AS velox_user)
-                        `;
-                    } else if(self.useRealm) {
-                        //must restrict read of users of same realms
-                        return `
-                            (SELECT *
-                            FROM
-                            (SELECT DISTINCT u.*
-                            FROM velox_user u
-                            JOIN velox_link_user_realm l ON u.uid = l.user_uid
-                            JOIN velox_link_user_realm r ON l.realm_code = r.realm_code
-                            WHERE r.user_uid = '${client.context.req.user.uid}' ) AS velox_user)
-                        `;
-                    } else {
-                        return "velox_user" ;
-                    }
-                    
-                }else{
+        this.extendsClient.getTable_velox_user = function(){
+            var client = this ; //this is the db client
+            if(client.context && client.context.req && client.context.req.user){
+                if(self.useProfile && self.useRealm) {
+                    //must restrict read of users of same realms and profile same or lower
+                    return `
+                        (SELECT *
+                        FROM
+                        (SELECT DISTINCT u.*
+                        FROM velox_user u
+                        JOIN velox_link_user_realm l ON u.uid = l.user_uid
+                        JOIN velox_user_profile p ON p.code = l.profile_code
+                        JOIN velox_link_user_realm r ON l.realm_code = r.realm_code
+                        JOIN velox_user_profile pc ON pc.code = r.profile_code
+                        WHERE r.user_uid = '${client.context.req.user.uid}'
+                            AND p.level>=pc.level ) AS velox_user)
+                    `;
+                } else if(self.useRealm) {
+                    //must restrict read of users of same realms
+                    return `
+                        (SELECT *
+                        FROM
+                        (SELECT DISTINCT u.*
+                        FROM velox_user u
+                        JOIN velox_link_user_realm l ON u.uid = l.user_uid
+                        JOIN velox_link_user_realm r ON l.realm_code = r.realm_code
+                        WHERE r.user_uid = '${client.context.req.user.uid}' ) AS velox_user)
+                    `;
+                } else {
                     return "velox_user" ;
                 }
+                
+            }else{
+                return "velox_user" ;
             }
-        } ;
+        };
         if(this.options.restrictedTables){
             for(let table of this.options.restrictedTables){
                 if(table.realmCol){

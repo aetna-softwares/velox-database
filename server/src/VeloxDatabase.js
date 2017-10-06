@@ -298,6 +298,7 @@ class VeloxDatabase {
                 done(null, results) ;
             }) ;
         } ;
+        let interceptorsByActions = {} ;
         for(let extension of VeloxDatabase.extensions){
             if(extension.extendsClient){                
                 Object.keys(extension.extendsClient).forEach((key)=> {
@@ -305,46 +306,61 @@ class VeloxDatabase {
                 });
             }
             if(extension.interceptClientQueries){
-                var callInterceptor = (interceptor, args, callback)=>{
-                    if(!interceptor){ return callback() ;}
-                    if(interceptor.length === args.length){
-                        try{
-                            interceptor.apply(client, args) ;
-                            callback() ;
-                        }catch(err){
-                            callback(err) ;
-                        }
-                    }else{
-                        interceptor.apply(client, args.concat([callback])) ;
+                for(let interception of extension.interceptClientQueries){
+                    if(!interceptorsByActions[interception.name]){
+                        interceptorsByActions[interception.name] = [] ;
                     }
-                } ;
-                extension.interceptClientQueries.forEach((interception)=>{
-                    let originalFunction = client[interception.name] ;
-                    client[interception.name] = function(){
-                        let args = Array.prototype.slice.call(arguments) ;
-                        var shouldIntercept = !interception.table || args[0] === interception.table ;
-                        if(shouldIntercept){
-                            let realCallback = args.pop();
-                            callInterceptor(interception.before, args, (err)=>{
-                                if(err){ return realCallback(err); }
-                                originalFunction.apply(this, args.concat([function(err){
-                                    if(err){
-                                        return realCallback(err) ;
-                                    }
-                                    args = Array.prototype.slice.call(arguments) ;
-                                    args = args.splice(1) ;
-                                    callInterceptor(interception.after, args, (err)=>{
-                                        if(err){ return realCallback(err); }
-                                        realCallback.apply(null, [null].concat(args)) ;
-                                    }) ;
-                                }.bind(this)])) ;
-                            }) ;
-                        } else {
-                            originalFunction.apply(this, args) ;
-                        }
-                    }.bind(client) ;
-                }) ;
+                    interceptorsByActions[interception.name].push(interception) ;
+                }
             }
+        }
+        var callOneInterceptor = (interceptor, args, callback)=>{
+            if(!interceptor){ return callback() ;}
+            if(interceptor.length === args.length){
+                try{
+                    interceptor.apply(client, args) ;
+                    callback() ;
+                }catch(err){
+                    callback(err) ;
+                }
+            }else{
+                interceptor.apply(client, args.concat([callback])) ;
+            }
+        } ;
+        for(let actionName of Object.keys(interceptorsByActions)){
+            let interceptors = interceptorsByActions[actionName] ;
+            let originalFunction = client[actionName] ;
+            client[actionName] = function(){
+                let args = Array.prototype.slice.call(arguments) ;
+                let tableName = args[0] ;
+                let realCallback = args.pop();
+                let jobBefore = new AsyncJob(AsyncJob.SERIES) ;
+                for(let int of interceptors.filter(function(int){return int.table === tableName && int.before ;})){
+                    jobBefore.push((cb)=>{
+                        callOneInterceptor(int.before, args, cb) ;
+                    });
+                }
+                jobBefore.async((err)=>{
+                    if(err){ return realCallback(err) ; }
+                    originalFunction.apply(this, args.concat([function(err){
+                        if(err){
+                            return realCallback(err) ;
+                        }
+                        args = Array.prototype.slice.call(arguments) ;
+                        args = args.splice(1) ;
+                        let jobAfter = new AsyncJob(AsyncJob.SERIES) ;
+                        for(let int of interceptors.filter(function(int){return int.table === tableName && int.after ;})){
+                            jobAfter.push((cb)=>{
+                                callOneInterceptor(int.after, args, cb) ;
+                            });
+                        }
+                        jobAfter.async((err)=>{
+                            if(err){ return realCallback(err); }
+                            realCallback.apply(null, [null].concat(args)) ;
+                        }) ;
+                    }.bind(this)])) ;
+                }) ;
+            }.bind(client) ;
         }
     }
 
