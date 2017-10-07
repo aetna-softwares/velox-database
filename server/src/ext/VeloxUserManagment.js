@@ -487,6 +487,7 @@ class VeloxUserManagment{
             {name : "insert", table: "velox_link_user_realm", before : this.beforeCheckUserRealmAllowed },
             {name : "update", table: "velox_link_user_realm", before : this.beforeCheckUserRealmAllowed },
             {name : "remove", table: "velox_link_user_realm", before : this.beforeCheckUserRealmAllowed },
+            {name : "insert", table: "velox_user_realm", after : this.afterInsertRealm },
             {name : "getByPk", table: "velox_user", after : this.removePassword },
             {name : "searchFirst", table: "velox_user", after : this.removePassword },
             {name : "search", table: "velox_user", after : this.removePassword },
@@ -707,6 +708,28 @@ class VeloxUserManagment{
         records.forEach(function(record){
             record.password = FAKE_PASSWORD ;
         });
+    }
+
+    /**
+     * Register the current user on realm as it has created it
+     * 
+     * @param {object} realm the inserted realm 
+     * @param {function} callback 
+     */
+    afterInsertRealm(realm, callback){
+        if(this.context && this.context.req && this.context.req.user){
+            //automatically link current user to this new realm
+
+            //search profile to use
+            this.queryFirst("SELECT profile_code FROM velox_link_user_realm WHERE user_uid = $1 LIMIT 1", [this.context.req.user.uid], (err, profile)=>{
+                if(err){ return callback(err) ;}
+                //don't use insert on purpose to avoid right check that will say that this user does not belong to this realm
+                this.query("INSERT INTO velox_link_user_realm(user_uid, realm_code, profile_code) VALUES ($1, $2, $3)", [this.context.req.user.uid, realm.code, profile.profile_code], callback) ;
+            }) ;
+            
+        }else{
+            callback() ;
+        }
     }
 
     authenticateGoogleUser(db, token, callback){
