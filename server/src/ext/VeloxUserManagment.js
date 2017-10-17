@@ -532,15 +532,46 @@ class VeloxUserManagment{
         if(this.options.restrictedTables){
             for(let table of this.options.restrictedTables){
                 if(table.realmCol){
+                    //restrict on records linked to user realm
                     this.extendsClient["getTable_"+table.name] = function(){
                         var client = this ; //this is the db client
-                        if(client.context && client.context.req && client.context.req.user){
+                        if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
                             return `
                                 (SELECT DISTINCT t.*
                                 FROM
                                 ${table.name} t
                                 JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
                                 WHERE r.user_uid = '${client.context.req.user.uid}')
+                            `;
+                        }else{
+                            return table.name ;
+                        }
+                    } ;
+                } else if (table.userCol){
+                    //restrict on records linked to user
+                    this.extendsClient["getTable_"+table.name] = function(){
+                        var client = this ; //this is the db client
+                        if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
+                            return `
+                                (SELECT DISTINCT t.*
+                                FROM
+                                ${table.name} t
+                                WHERE ${table.userCol} = '${client.context.req.user.uid}')
+                            `;
+                        }else{
+                            return table.name ;
+                        }
+                    } ;
+                } else if (table.hidden){
+                    //hide all records
+                    this.extendsClient["getTable_"+table.name] = function(){
+                        var client = this ; //this is the db client
+                        if(!client.disableRestriction){
+                            return `
+                                (SELECT DISTINCT t.*
+                                FROM
+                                ${table.name} t
+                                WHERE 0 = 1)
                             `;
                         }else{
                             return table.name ;
@@ -556,9 +587,10 @@ class VeloxUserManagment{
                     removeMinProfileLevel = removeMinProfileLevel === undefined?table.minProfileLevel:removeMinProfileLevel;
                 }
                 if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel){
+                    //action restriction on profile level
                     var createRestrictFunction = function(table, minLevel){
                         return function(tableName, record, callback){
-                            if(this.context && this.context.req && this.context.req.user){
+                            if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
                                 //check current user is allowed on this realm
                                 this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid},[{otherTable: "velox_user_profile", name: "profile"}], (err, currentUserRealms)=>{
                                     if(err){ return callback(err) ;}
@@ -605,6 +637,52 @@ class VeloxUserManagment{
                             {name : "remove", table: table.name, before : createRestrictFunction(table, removeMinProfileLevel) }
                         );
                     }
+                } else if(table.realmCol){
+                    //no restriction on level, add restriction on realm record
+                    let realmRestrict = function(tableName, record, callback){
+                        if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
+                            //check current user is allowed on this realm
+                            this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid},[{otherTable: "velox_user_profile", name: "profile"}], (err, currentUserRealms)=>{
+                                if(err){ return callback(err) ;}
+                                let thisRealmLines = currentUserRealms;
+                                if(table.realmCol){
+                                    thisRealmLines = [];
+                                    currentUserRealms.forEach((r)=>{
+                                        if(r.realm_code === record[table.realmCol]){
+                                            thisRealmLines.push(r) ;
+                                        }
+                                    }) ;
+                                }
+                                
+                                if(thisRealmLines.length === 0){
+                                    return callback("You are not allowed for "+tableName) ;
+                                }
+
+                                callback();
+                            }) ;
+                        }else{
+                            callback() ;
+                        }
+                    } ;
+                    this.interceptClientQueries.push( {name : "insert", table: table.name, before : realmRestrict } );
+                    this.interceptClientQueries.push( {name : "update", table: table.name, before : realmRestrict } );
+                    this.interceptClientQueries.push( {name : "remove", table: table.name, before : realmRestrict } );
+                } else if(table.userCol){
+                    //no restriction on profile or realm, add restriction on user records
+                    let userRestrict = function(tableName, record, callback){
+                        if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
+                            //check current user is allowed on this record
+                            if(this.context.req.user !== record[table.userCol]){
+                                return callback("You are not allowed for "+tableName) ;
+                            }
+                            callback();
+                        }else{
+                            callback() ;
+                        }
+                    } ;
+                    this.interceptClientQueries.push( {name : "insert", table: table.name, before : userRestrict } );
+                    this.interceptClientQueries.push( {name : "update", table: table.name, before : userRestrict } );
+                    this.interceptClientQueries.push( {name : "remove", table: table.name, before : userRestrict } );
                 }
             }
         }

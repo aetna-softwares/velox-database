@@ -4,6 +4,33 @@ const VeloxLogger = require("velox-commons/VeloxLogger") ;
 
 const DB_VERSION_TABLE = "velox_db_version" ;
 
+function extendsSchema(schemaBase, schemaExtends){
+    Object.keys(schemaExtends).forEach(function(table){
+        if(!schemaBase[table]){
+            schemaBase[table] = schemaExtends[table] ;
+        }else{
+            if(schemaExtends[table].columns){
+                schemaExtends[table].columns.forEach(function(col){
+                    var found = schemaBase[table].columns.some(function(colBase){
+                        if(colBase.name === col.name){
+                            Object.keys(col).forEach(function(k){
+                                colBase[k] = col[k] ;
+                            }) ;
+                            return true ;
+                        }
+                    }) ;
+                    if(!found){
+                        schemaBase[table].columns.push(col) ;
+                    }
+                }) ;
+            }
+            if(schemaExtends[table].pk){
+                schemaBase[table].pk = schemaExtends[table].pk ;
+            }
+        }
+    }) ;
+}
+
 class VeloxDbPgClient {
 
     /**
@@ -13,7 +40,7 @@ class VeloxDbPgClient {
      * @param {function} closeCb the callback to give back the client to the pool
      * @param {VeloxLogger} logger logger
      */
-    constructor(connection, closeCb, logger, cache){
+    constructor(connection, closeCb, logger, cache, schema){
         this.connection = connection;
         this.closeCb = closeCb ;
         this.logger = logger ;
@@ -25,6 +52,7 @@ class VeloxDbPgClient {
             cache._cacheColumns = {} ;
         }
         this.cache = cache ;
+        this.schema = schema ;
     }
 
     /**
@@ -99,7 +127,13 @@ class VeloxDbPgClient {
         if(lowerSql.indexOf("create") != -1 || lowerSql.indexOf("alter") != -1 ){
             delete this.cache.schema ;
         }
-        this.connection.query(sql, params, callback) ;
+        this.connection.query(sql, params, (err, results)=>{
+            if(err){
+                this.logger.error("Error while running query "+sql+", params "+JSON.stringify(params)+" : "+JSON.stringify(err)) ;
+                return callback(err) ;
+            }
+            callback(null, results) ;
+        }) ;
     }
 
     /**
@@ -789,10 +823,11 @@ class VeloxDbPgClient {
                 if(joinFetch){
                     //we must do some windowing
                     let partitionOrderBy = orderBy ;
+                    let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
                     if(!partitionOrderBy){
-                        partitionOrderBy = schema[table].pk.join(", ") ; 
+                        partitionOrderBy = pkNames ; 
                     }
-                    select.push(`ROW_NUMBER() OVER (PARTITION BY ${schema[table].pk.join(", ")} ORDER BY ${partitionOrderBy}) AS velox_window_rownum`) ;
+                    select.push(`ROW_NUMBER() OVER (PARTITION BY ${pkNames} ORDER BY ${partitionOrderBy}) AS velox_window_rownum`) ;
                 }else{
                     //classical offset/limit
                     if(limit) {
@@ -938,7 +973,9 @@ class VeloxDbPgClient {
                                 }
                             }
 
+                            extendsSchema(schema, this.schema) ;
                             this.cache.schema = schema ;
+
                             callback(null, schema) ;
                     }) ;
             }) ;
@@ -1072,7 +1109,7 @@ class VeloxDbPgClient {
         var finished = false;
         if(timeout === undefined){ timeout = 30; }
 			
-        var tx = new VeloxDbPgClient(this.connection, function(){}, this.logger, this.cache) ;
+        var tx = new VeloxDbPgClient(this.connection, function(){}, this.logger, this.cache, this.schema) ;
         tx.transaction = function(){ throw "You should not start a transaction in a transaction !"; } ;
             
 		this.connection.query("BEGIN", (err) => {
@@ -1194,6 +1231,7 @@ class VeloxDbPgBackend {
 
         this.logger = new VeloxLogger("VeloxDbPgBackend", options.logger) ;
         this.cache = {} ;
+        this.schema = options.schema || {} ;
     }
 
     /**
@@ -1205,7 +1243,7 @@ class VeloxDbPgBackend {
         this.pool.connect((err, client, done) => {
             if(err){ return callback(err); }
 
-            let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache) ;
+            let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache, this.schema) ;
             callback(null, dbClient) ;
         });
     }

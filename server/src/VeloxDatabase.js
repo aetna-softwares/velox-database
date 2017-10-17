@@ -25,6 +25,7 @@ class VeloxDatabase {
      * @property {string} password database password
      * @property {'pg'} backend database backend
      * @property {string} migrationFolder  migration scripts folder
+     * @property {object} schema database schema information (will extends information from database schema)
      * @property {InterfaceLogger} [logger=console] logger (use console if not given)
      */
 
@@ -55,6 +56,7 @@ class VeloxDatabase {
             port: options.port,
             database: options.database,
             password: options.password,
+            schema : options.schema,
             logger: logger
         });
 
@@ -139,23 +141,25 @@ class VeloxDatabase {
                 let r = reads[k] ;
                 job.push((cb)=>{
                     if(r.pk){
-                        client.getByPk(r.table, r.pk, r.joinFetch, (err, record)=>{
+                        client.getByPk(r.table || k, r.pk, r.joinFetch, (err, record)=>{
                             if(err){ return cb(err); }
                             results[k] = record ;
                             cb() ;
                         }) ;
                     }else if(r.search){
-                        client.search(r.table, r.search, r.orderBy. r.offset, r.limit, (err, records)=>{
+                        client.search(r.table || k, r.search, r.orderBy, r.offset, r.limit, (err, records)=>{
                             if(err){ return cb(err); }
                             results[k] = records ;
                             cb() ;
                         }) ;
                     }else if(r.searchFirst){
-                        client.searchFirst(r.table, r.searchFirst, r.orderBy, (err, record)=>{
+                        client.searchFirst(r.table || k, r.searchFirst, r.orderBy, (err, record)=>{
                             if(err){ return cb(err); }
                             results[k] = record ;
                             cb() ;
                         }) ;
+                    }else{
+                        cb("Unknown operation for "+JSON.stringify(r)) ;
                     }
                 }) ;
             }

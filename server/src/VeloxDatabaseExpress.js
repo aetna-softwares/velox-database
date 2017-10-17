@@ -122,6 +122,7 @@ class VeloxDatabaseExpress {
                 if(urlParts.length < 2){
                     return res.status(500).end("Wrong call url, get "+urlPath) ;
                 }
+                urlParts = urlParts.map((p)=>{ return unescape(p) ;}) ;
 
                 let table = urlParts[1] ;
                 
@@ -142,7 +143,7 @@ class VeloxDatabaseExpress {
                 } else if(table === "schema"){
                     res.status(200).json(schema) ;
                 } else if(table === "multiread"){
-                    let reads = record;
+                    let reads = record.reads;
                     this.db.inDatabase((client, done)=>{
                         this._setContext(client, req) ;
                         client.multiread(reads, done) ;
