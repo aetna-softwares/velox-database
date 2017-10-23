@@ -88,6 +88,28 @@ class VeloxDatabaseExpress {
     }
 
     /**
+     * Format error to send to print on logger
+     * 
+     * @param {*} err 
+     */
+    _formatErrLogger(err, req){
+        var str = err;
+        if(typeof(err) === "object"){ 
+            if(err instanceof Error){
+               str = ""+err ;
+            }else{
+                str = JSON.stringify(err) ;
+            }
+        }
+        str += " [query : "+JSON.stringify(req.query)+
+        ", params : "+JSON.stringify(req.query)+", body : "+JSON.stringify(req.body)+"]" ;
+        if(err && err instanceof Error){
+            str += ", stack : "+err.stack ;
+        }
+        return str;
+    }
+
+    /**
      * 
      * @param {VeloxDatabaseClient} client the database client instance
      * @param {HttpRequest} req the current HTTP request
@@ -120,6 +142,7 @@ class VeloxDatabaseExpress {
 
                 let urlParts = urlPath.split("/") ;
                 if(urlParts.length < 2){
+                    this.db.logger.error("Wrong call url, get "+urlPath) ;
                     return res.status(500).end("Wrong call url, get "+urlPath) ;
                 }
                 urlParts = urlParts.map((p)=>{ return unescape(p) ;}) ;
@@ -129,7 +152,10 @@ class VeloxDatabaseExpress {
 
                 if(this.db.expressExtensions[table]){
                     this.db.expressExtensions[table].bind(this)(record, (err, result)=>{
-                        if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                        if(err){ 
+                            this.db.logger.error(this._formatErrLogger(err, req)) ;
+                            return res.status(500).end(this._formatErr(err)) ; 
+                        }
                         res.status(200).json(result) ;
                     }) ;
                 } else if(table === "transactionalChanges"){
@@ -137,7 +163,10 @@ class VeloxDatabaseExpress {
                         this._setContext(tx, req) ;
                         tx.changes(record, done) ;
                     }, (err, modifiedRecord)=>{
-                        if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                        if(err){ 
+                            this.db.logger.error(this._formatErrLogger(err, req)) ;
+                            return res.status(500).end(this._formatErr(err)) ; 
+                        }
                         res.status(200).json(modifiedRecord) ;
                     }) ;
                 } else if(table === "schema"){
@@ -148,12 +177,16 @@ class VeloxDatabaseExpress {
                         this._setContext(client, req) ;
                         client.multiread(reads, done) ;
                     }, (err, results)=>{
-                        if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                        if(err){ 
+                            this.db.logger.error(this._formatErrLogger(err, req)) ;
+                            return res.status(500).end(this._formatErr(err)) ; 
+                        }
                         res.status(200).json(results) ;
                     }) ;
                 } else {
                     if(!schema[table]){
-                        return res.status(500).end("Unkown table "+table) ;
+                        this.db.logger.error("Unknown table "+table) ;
+                        return res.status(500).end("Unknown table "+table) ;
                     }
 
                     let pk = null ;
@@ -162,6 +195,7 @@ class VeloxDatabaseExpress {
                         if(!pk){ pk = {} ; }
                         let pkName = schema[table].pk[i-2] ;
                         if(!pkName){
+                            this.db.logger.error("Wrong pk definition for "+table+" : "+JSON.stringify(pk)) ;
                             return res.status(500).end("Wrong pk definition for "+table) ;
                         }
                         pk[pkName] = urlParts[i] ;
@@ -172,14 +206,19 @@ class VeloxDatabaseExpress {
                             this._setContext(client, req) ;
                             client.insert(table, record, done) ;
                         }, (err, insertedRecord)=>{
-                            if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                            if(err){ 
+                                this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                return res.status(500).end(this._formatErr(err)) ; 
+                            }
                             res.status(201).json(insertedRecord) ;
                         }) ;
                     } else if(req.method === "PUT"){
                         if(!pk){
+                            this.db.logger.error("missing pk") ;
                             return res.status(500).end("missing pk") ;
                         }
                         if(Object.keys(pk).length !== schema[table].pk.length) {
+                            this.db.logger.error("wrong pk, expected "+schema[table].pk.join(", ")+", received "+JSON.stringify(pk)) ;
                             return res.status(500).end("wrong pk, expected "+schema[table].pk.join(", ")) ;
                         }
                         for(let k of Object.keys(pk)){
@@ -189,27 +228,36 @@ class VeloxDatabaseExpress {
                             this._setContext(client, req) ;
                             client.update(table, record, done) ;
                         }, (err, updatedRecord)=>{
-                            if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                            if(err){ 
+                                this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                return res.status(500).end(this._formatErr(err)) ; 
+                            }
                             res.status(200).json(updatedRecord) ;
                         }) ;
                     } else if(req.method === "DELETE"){
                         if(!pk){
+                            this.db.logger.error("missing pk") ;
                             return res.status(500).end("missing pk") ;
                         }
                         if(Object.keys(pk).length !== schema[table].pk.length) {
+                            this.db.logger.error("wrong pk, expected "+schema[table].pk.join(", ")+", received "+JSON.stringify(pk)) ;
                             return res.status(500).end("wrong pk, expected "+schema[table].pk.join(", ")) ;
                         }
                         this.db.transaction((client, done)=>{
                             this._setContext(client, req) ;
                             client.remove(table, pk, done) ;
                         }, (err, insertedRecord)=>{
-                            if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                            if(err){ 
+                                this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                return res.status(500).end(this._formatErr(err)) ;
+                            }
                             res.status(200).json(insertedRecord);
                         }) ;
                     } else if(req.method === "GET"){
                         if(pk){
                             //get by id
-                                if(Object.keys(pk).length !== schema[table].pk.length) {
+                            if(Object.keys(pk).length !== schema[table].pk.length) {
+                                this.db.logger.error("wrong pk, expected "+schema[table].pk.join(", ")+", received "+JSON.stringify(pk)) ;
                                 return res.status(500).end("wrong pk, expected "+schema[table].pk.join(", ")) ;
                             }
                             this.db.inDatabase((client, done)=>{
@@ -220,7 +268,10 @@ class VeloxDatabaseExpress {
                                 }
                                 client.getByPk(table, pk, joinFetch, done) ;
                             }, (err, foundRecord)=>{
-                                if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                                if(err){ 
+                                    this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                    return res.status(500).end(this._formatErr(err)) ; 
+                                }
                                 res.status(200).json(foundRecord) ;
                             }) ;
                         }else if(req.query["search"]){
@@ -230,10 +281,14 @@ class VeloxDatabaseExpress {
                                     this._setContext(client, req) ;
                                     client.search(table, search.conditions, search.joinFetch, search.orderBy, search.offset, search.limit, done) ;
                                 }, (err, foundRecords)=>{
-                                    if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                                    if(err){ 
+                                        this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                        return res.status(500).end(this._formatErr(err)) ; 
+                                    }
                                     res.status(200).json(foundRecords) ;
                                 }) ;
                             } catch (error) {
+                                this.db.logger.error("invalid search format : "+req.query["search"]+" : "+error) ;
                                 return res.status(500).end("invalid search format") ;
                             }
                         }else if(req.query["searchFirst"]){
@@ -243,17 +298,23 @@ class VeloxDatabaseExpress {
                                     this._setContext(client, req) ;
                                     client.searchFirst(table, search.conditions, search.joinFetch, search.orderBy, done) ;
                                 }, (err, foundRecords)=>{
-                                    if(err){ return res.status(500).end(this._formatErr(err)) ; }
+                                    if(err){ 
+                                        this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                        return res.status(500).end(this._formatErr(err)) ; 
+                                    }
                                     res.status(200).json(foundRecords) ;
                                 }) ;
                             } catch (error) {
+                                this.db.logger.error("invalid search format : "+req.query["searchFirst"]+" : "+error) ;
                                 return res.status(500).end("invalid search format") ;
                             }
                         }else{
+                            this.db.logger.error("Wrong GET access") ;
                             res.status(500).end("Wrong GET access") ;    
                         }
                     } else {
-                        res.status(500).end("Unkown method "+req.method) ;
+                        this.db.logger.error("Unknown method "+req.method) ;
+                        res.status(500).end("Unknown method "+req.method) ;
                     }   
                 }
             }) ;

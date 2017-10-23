@@ -40,7 +40,7 @@ class VeloxDbPgClient {
      * @param {function} closeCb the callback to give back the client to the pool
      * @param {VeloxLogger} logger logger
      */
-    constructor(connection, closeCb, logger, cache, schema){
+    constructor(connection, closeCb, logger, cache, schema, customInit){
         this.connection = connection;
         this.closeCb = closeCb ;
         this.logger = logger ;
@@ -53,6 +53,10 @@ class VeloxDbPgClient {
         }
         this.cache = cache ;
         this.schema = schema ;
+        this.customInit = customInit ;
+        for(let custo of customInit){
+            custo(this);
+        }
     }
 
     /**
@@ -117,6 +121,17 @@ class VeloxDbPgClient {
      * @param {function(err, results)} callback - called when finished
      */
     query(sql, params, callback){
+        this._query(sql, params, callback) ;
+    }
+
+    /**
+     * Execute a query and give the result back
+     * 
+     * @param {string} sql - SQL to execute
+     * @param {Array} [params] - Params
+     * @param {function(err, results)} callback - called when finished
+     */
+    _query(sql, params, callback){
         
         if(!callback && typeof(params) === "function"){
             callback = params;
@@ -146,11 +161,24 @@ class VeloxDbPgClient {
      * @param {function(err, results)} callback - called when finished
      */
     queryFirst(sql, params, callback){
+        this._queryFirst(sql, params, callback) ;
+    }
+    
+    /**
+     * Execute a query and give the first result back
+     * 
+     * Note : the query is not modified, you should add the LIMIT clause yourself !
+     * 
+     * @param {string} sql - SQL to execute
+     * @param {Array} [params] - Params
+     * @param {function(err, results)} callback - called when finished
+     */
+    _queryFirst(sql, params, callback){
         if(!callback && typeof(params) === "function"){
             callback = params;
             params = [];
         }
-        this.query(sql, params, (err, results)=>{
+        this._query(sql, params, (err, results)=>{
             if(err){ return callback(err); }
             if(results.rows.length === 0){
                 return callback(null, null) ;
@@ -191,7 +219,7 @@ class VeloxDbPgClient {
 
                 let alias = "t"+from.length ;
                 aliases[join.otherTable] = alias ;
-                j += " "+join.otherTable+" "+alias ;
+                j += ` ${this.getTable(join.otherTable)} ${alias} ` ;
 
                 let otherField = join.otherField ;
                 if(otherField){
@@ -357,6 +385,11 @@ class VeloxDbPgClient {
             callback = joinFetch;
             joinFetch = null;
         }
+
+        if(!pk) {
+            return callback("Error searching in table "+table+", empty primary key given") ;
+        }
+
         this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
 
@@ -407,7 +440,7 @@ class VeloxDbPgClient {
 
                 let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
 
-                this.query(sql, params, (err, results)=>{
+                this._query(sql, params, (err, results)=>{
                     if(err){ return callback(err) ;}
                     if(results.rows.length === 0){ return callback(null, null); }
                     if(!joinFetch){ return callback(null, results.rows[0]); }
@@ -483,7 +516,7 @@ class VeloxDbPgClient {
 
             let sql = `DELETE FROM ${table} WHERE ${where.join(" AND ")}` ;
 
-            this.query(sql, params, callback) ;
+            this._query(sql, params, callback) ;
         }) ;
     }
 
@@ -529,7 +562,7 @@ class VeloxDbPgClient {
 
             let sql = `INSERT INTO ${table}(${cols.join(",")}) VALUES ${values.join(",")} RETURNING *` ;
 
-            this.queryFirst(sql, params, callback) ;
+            this._queryFirst(sql, params, callback) ;
         }) ;
     }
 
@@ -578,7 +611,7 @@ class VeloxDbPgClient {
 
                 let sql = `UPDATE ${table} SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;
 
-                this.queryFirst(sql, params, callback) ;
+                this._queryFirst(sql, params, callback) ;
             }) ;
         }) ;
     }
@@ -636,7 +669,7 @@ class VeloxDbPgClient {
         
         this._prepareSearchQuery(table, search, joinFetch, orderBy, offset, limit, (err, sql, params, aliases, joinFetch, schema)=>{
             if(err){ return callback(err); }
-            this.query(sql, params, (err, result)=>{
+            this._query(sql, params, (err, result)=>{
                 if(err){ return callback(err); }
 
                 if(!joinFetch){
@@ -766,6 +799,9 @@ class VeloxDbPgClient {
                     if(typeof(value) === "object" && !Array.isArray(value)){
                         ope = value.ope ;
                         value = value.value ;
+                        if(!ope){
+                            return callback("Search with special condition wrong syntax. Expected {ope: ..., value: ...}. received "+JSON.stringify(search)) ;
+                        }
                     }else{
                         if(Array.isArray(value)){
                             ope = "IN" ;
@@ -822,12 +858,8 @@ class VeloxDbPgClient {
             if(limit || offset){
                 if(joinFetch){
                     //we must do some windowing
-                    let partitionOrderBy = orderBy ;
                     let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
-                    if(!partitionOrderBy){
-                        partitionOrderBy = pkNames ; 
-                    }
-                    select.push(`ROW_NUMBER() OVER (PARTITION BY ${pkNames} ORDER BY ${partitionOrderBy}) AS velox_window_rownum`) ;
+                    select.push(`DENSE_RANK() OVER (ORDER BY ${pkNames}) AS velox_window_rownum`) ;
                 }else{
                     //classical offset/limit
                     if(limit) {
@@ -897,7 +929,7 @@ class VeloxDbPgClient {
         if(this.cache.schema){
             return callback(null, this.cache.schema) ;
         }
-        this.query(`
+        this._query(`
                 SELECT t.table_name, column_name, udt_name, character_maximum_length, numeric_precision, datetime_precision
                     FROM information_schema.columns t
                 JOIN information_schema.tables t1 on t.table_name = t1.table_name
@@ -929,7 +961,7 @@ class VeloxDbPgClient {
                 }) ;
             }
 
-            this.query( `
+            this._query( `
                     select kc.column_name , t.table_name
                     from  
                         information_schema.table_constraints tc
@@ -948,7 +980,7 @@ class VeloxDbPgClient {
                         }
                     }
 
-                    this.query( `
+                    this._query( `
                             select kc.column_name , tc.table_name, ccu.table_name AS foreign_table_name,
                                 ccu.column_name AS foreign_column_name 
                             from  
@@ -1001,7 +1033,7 @@ class VeloxDbPgClient {
         if(this.cache._cacheColumns[table]){
             return callback(null, this.cache._cacheColumns[table]) ;
         }
-        this.query(`SELECT column_name, udt_name, character_maximum_length, numeric_precision, datetime_precision
+        this._query(`SELECT column_name, udt_name, character_maximum_length, numeric_precision, datetime_precision
                     FROM information_schema.columns t
                 JOIN information_schema.tables t1 on t.table_name = t1.table_name
                     WHERE t.table_schema='public'
@@ -1027,7 +1059,7 @@ class VeloxDbPgClient {
         if(this.cache._cachePk[table]){
             return callback(null, this.cache._cachePk[table]) ;
         }
-        this.query(`select kc.column_name 
+        this._query(`select kc.column_name 
                     from  
                         information_schema.table_constraints tc
                         JOIN information_schema.key_column_usage kc ON kc.table_name = tc.table_name and kc.table_schema = tc.table_schema
@@ -1063,14 +1095,18 @@ class VeloxDbPgClient {
             } else {
                 //this change is a SQL query to run
                 job.push((cb)=>{
-                    this.query(change.sql, change.params, cb) ;
+                    this._query(change.sql, change.params, cb) ;
                 }) ;
             }
         }
         job.push((cb)=>{
-            this.query(`UPDATE ${DB_VERSION_TABLE} SET version = $1, last_update = now()`, [newVersion], cb) ;
+            this._query(`UPDATE ${DB_VERSION_TABLE} SET version = $1, last_update = now()`, [newVersion], cb) ;
         }) ;
         job.async(callback) ;
+    }
+
+    clone(){
+        return new VeloxDbPgClient(this.connection, function(){}, this.logger, this.cache, this.schema, this.customInit) ;
     }
 
 
@@ -1109,7 +1145,7 @@ class VeloxDbPgClient {
         var finished = false;
         if(timeout === undefined){ timeout = 30; }
 			
-        var tx = new VeloxDbPgClient(this.connection, function(){}, this.logger, this.cache, this.schema) ;
+        var tx = this.clone() ;
         tx.transaction = function(){ throw "You should not start a transaction in a transaction !"; } ;
             
 		this.connection.query("BEGIN", (err) => {
@@ -1232,6 +1268,7 @@ class VeloxDbPgBackend {
         this.logger = new VeloxLogger("VeloxDbPgBackend", options.logger) ;
         this.cache = {} ;
         this.schema = options.schema || {} ;
+        this.customClientInit = options.customClientInit || [] ;
     }
 
     /**
@@ -1243,7 +1280,7 @@ class VeloxDbPgBackend {
         this.pool.connect((err, client, done) => {
             if(err){ return callback(err); }
 
-            let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache, this.schema) ;
+            let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache, this.schema, this.customClientInit) ;
             callback(null, dbClient) ;
         });
     }
@@ -1268,7 +1305,7 @@ class VeloxDbPgBackend {
                         this.logger.error("Can't connect to template1 to create database");
                         return callback(err) ;
                     }
-                    clientTemplate.query("CREATE DATABASE "+this.options.database, [], (err)=>{
+                    clientTemplate._query("CREATE DATABASE "+this.options.database, [], (err)=>{
                         clientTemplate.end() ;
                         if(err){
                             //CREATE query failed

@@ -116,7 +116,7 @@ class VeloxSqlDeleteTracker{
      * @param {function(Error)} callback 
      */
     createTriggerForTables(backend, tx, triggerCreateFunc, callback){
-         tx.query(this.getAllTables(backend), (err, result)=>{
+         tx._query(this.getAllTables(backend), (err, result)=>{
             if(err){ return callback(err); }
              
             let alertJob = new AsyncJob(AsyncJob.SERIES) ;
@@ -176,13 +176,13 @@ class VeloxSqlDeleteTracker{
      */
     createSequenceIfNotExists(backend, tx, name, callback){
         if(backend === "pg"){
-            tx.query(`SELECT c.relname FROM pg_class c WHERE c.relkind = 'S' and relname=$1`,[name], (err, result)=>{
+            tx._query(`SELECT c.relname FROM pg_class c WHERE c.relkind = 'S' and relname=$1`,[name], (err, result)=>{
                 if(err){ return callback(err); }
                 if(result.rows.length > 0){
                     return callback() ;//already exists
                 }
                 //create
-                tx.query(`CREATE SEQUENCE ${name} START 1`, callback) ;
+                tx._query(`CREATE SEQUENCE ${name} START 1`, callback) ;
             }) ;
         } else {
             callback("not implemented for backend "+backend) ;
@@ -199,7 +199,7 @@ class VeloxSqlDeleteTracker{
      */
     createTriggerBeforeDelete(backend, tx, table, callback){
         if(backend === "pg"){
-            tx.query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_ondelete ON ${table}`, (err)=>{
+            tx._query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_ondelete ON ${table}`, (err)=>{
                 if(err){ return callback(err); }
 
                 this.createSequenceIfNotExists(backend, tx, `velox_modiftrack_table_version_${table}`, (err)=>{
@@ -207,7 +207,7 @@ class VeloxSqlDeleteTracker{
 
                     
 
-                    tx.query(`select kc.column_name 
+                    tx._query(`select kc.column_name 
                         from  
                             information_schema.table_constraints tc
                             JOIN information_schema.key_column_usage kc ON kc.table_name = tc.table_name and kc.table_schema = tc.table_schema
@@ -254,9 +254,9 @@ class VeloxSqlDeleteTracker{
                         $$ 
                         LANGUAGE 'plpgsql'` ;
                         
-                        tx.query(trig, (err)=>{
+                        tx._query(trig, (err)=>{
                             if(err){ return callback(err); }
-                            tx.query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondelete BEFORE DELETE ON ${table} 
+                            tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondelete BEFORE DELETE ON ${table} 
                             FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_ondelete()`, (err)=>{
                                 if(err){ return callback(err); }
                                 callback() ;

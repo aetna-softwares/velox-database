@@ -57,7 +57,8 @@ class VeloxDatabase {
             database: options.database,
             password: options.password,
             schema : options.schema,
-            logger: logger
+            logger: logger,
+            customClientInit: []
         });
 
         for(let extension of VeloxDatabase.extensions){
@@ -100,6 +101,8 @@ class VeloxDatabase {
                 extension.init(this) ;
             }
         }
+
+        this._addClientCustomInit() ;
     }
 
     /**
@@ -133,239 +136,285 @@ class VeloxDatabase {
      * 
      * @param {VeloxDatabaseClient} client database client
      */
-    _prepareClient(client){
-        client.multiread = function(reads, done){
-            let job = new AsyncJob(AsyncJob.PARALLEL) ;
-            let results = {} ;
-            for(let k of Object.keys(reads)){
-                let r = reads[k] ;
-                job.push((cb)=>{
-                    if(r.pk){
-                        client.getByPk(r.table || k, r.pk, r.joinFetch, (err, record)=>{
-                            if(err){ return cb(err); }
-                            results[k] = record ;
-                            cb() ;
-                        }) ;
-                    }else if(r.search){
-                        client.search(r.table || k, r.search, r.orderBy, r.offset, r.limit, (err, records)=>{
-                            if(err){ return cb(err); }
-                            results[k] = records ;
-                            cb() ;
-                        }) ;
-                    }else if(r.searchFirst){
-                        client.searchFirst(r.table || k, r.searchFirst, r.orderBy, (err, record)=>{
-                            if(err){ return cb(err); }
-                            results[k] = record ;
-                            cb() ;
-                        }) ;
-                    }else{
-                        cb("Unknown operation for "+JSON.stringify(r)) ;
-                    }
-                }) ;
-            }
-            job.async((err)=>{
-                if(err){ return done(err) ;}
-                done(null, results) ;
-            }) ;
-        } ;
-        client.changes = function(changeSet, done){
-            let tx = this ;
-            let results = [] ;
-            let recordCache = {};
-            let updatePlaceholder = (record)=>{
-                if(typeof(record) === "object"){
-                    for(let k of Object.keys(record)){
-                        if(record[k] && typeof(record[k]) === "string" && record[k].indexOf("${") === 0){
-                            //this record contains ${table.field} that must be replaced by the real value of last inserted record of this table                        
-                            let [othertable, otherfield] = record[k].replace("${", "").replace("}", "").split(".") ;
-                            if(recordCache[othertable]){
-                                record[k] = recordCache[othertable][otherfield] ;
-                            }
+    _addClientCustomInit(){
+        this.backend.customClientInit.push(function(client){
+            client.multiread = function(reads, done){
+                let job = new AsyncJob(AsyncJob.PARALLEL) ;
+                let results = {} ;
+                for(let k of Object.keys(reads)){
+                    let r = reads[k] ;
+                    job.push((cb)=>{
+                        if(r.pk){
+                            client.getByPk(r.table || k, r.pk, r.joinFetch, (err, record)=>{
+                                if(err){ return cb(err); }
+                                results[k] = record ;
+                                cb() ;
+                            }) ;
+                        }else if(r.search){
+                            client.search(r.table || k, r.search, r.orderBy, r.offset, r.limit, (err, records)=>{
+                                if(err){ return cb(err); }
+                                results[k] = records ;
+                                cb() ;
+                            }) ;
+                        }else if(r.searchFirst){
+                            client.searchFirst(r.table || k, r.searchFirst, r.orderBy, (err, record)=>{
+                                if(err){ return cb(err); }
+                                results[k] = record ;
+                                cb() ;
+                            }) ;
+                        }else{
+                            cb("Unknown operation for "+JSON.stringify(r)) ;
                         }
-                    }
+                    }) ;
                 }
+                job.async((err)=>{
+                    if(err){ return done(err) ;}
+                    done(null, results) ;
+                }) ;
             } ;
-            let job = new AsyncJob(AsyncJob.SERIES) ;
-            
-            for(let change of changeSet){
-                let record = change.record ;
-                
-                let table = change.table ;
-                let action = change.action ;
-                if(action === "insert"){
+        }) ;
+        this.backend.customClientInit.push(function(client){
+            client.multiread = function(reads, done){
+                let job = new AsyncJob(AsyncJob.PARALLEL) ;
+                let results = {} ;
+                for(let k of Object.keys(reads)){
+                    let r = reads[k] ;
                     job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.insert(table, record, (err, insertedRecord)=>{
-                            if(err){ return cb(err); }
-                            results.push({
-                                action: "insert",
-                                table : table,
-                                record: insertedRecord
+                        if(r.pk){
+                            client.getByPk(r.table || k, r.pk, r.joinFetch, (err, record)=>{
+                                if(err){ return cb(err); }
+                                results[k] = record ;
+                                cb() ;
                             }) ;
-                            recordCache[table] = insertedRecord ;
-                            cb() ;
-                        }) ;
-                    });
-                }
-                if(action === "update"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.update(table, record, (err, updatedRecord)=>{
-                            if(err){ return cb(err); }
-                            results.push({
-                                action: "update",
-                                table : table,
-                                record: updatedRecord
+                        }else if(r.search){
+                            client.search(r.table || k, r.search, r.orderBy, r.offset, r.limit, (err, records)=>{
+                                if(err){ return cb(err); }
+                                results[k] = records ;
+                                cb() ;
                             }) ;
-                            recordCache[table] = updatedRecord ;
-                            cb() ;
-                        }) ;
-                    });
-                }
-                if(action === "remove"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.remove(table, record, (err)=>{
-                            if(err){ return cb(err); }
-                            results.push({
-                                action: "remove",
-                                table : table
+                        }else if(r.searchFirst){
+                            client.searchFirst(r.table || k, r.searchFirst, r.orderBy, (err, record)=>{
+                                if(err){ return cb(err); }
+                                results[k] = record ;
+                                cb() ;
                             }) ;
-                            cb() ;
-                        }) ;
-                    });
+                        }else{
+                            cb("Unknown operation for "+JSON.stringify(r)) ;
+                        }
+                    }) ;
                 }
-                if(!action || action === "auto"){
-                    job.push((cb)=>{
-                        updatePlaceholder(record) ;
-                        tx.getPrimaryKey(table, (err, primaryKey)=>{
-                            if(err) { return cb(err) ;}
-                            let hasPkValue = true ;
-                            if(Object.keys(record).length < primaryKey.length){
-                                hasPkValue = false;
-                            }
-                            for(let k of primaryKey){
-                                if(Object.keys(record).indexOf(k) === -1){
-                                    hasPkValue = false ;
-                                    break;
+                job.async((err)=>{
+                    if(err){ return done(err) ;}
+                    done(null, results) ;
+                }) ;
+            } ;
+        }) ;
+        this.backend.customClientInit.push(function(client){
+            client.changes = function(changeSet, done){
+                let tx = this ;
+                let results = [] ;
+                let recordCache = {};
+                let updatePlaceholder = (record)=>{
+                    if(typeof(record) === "object"){
+                        for(let k of Object.keys(record)){
+                            if(record[k] && typeof(record[k]) === "string" && record[k].indexOf("${") === 0){
+                                //this record contains ${table.field} that must be replaced by the real value of last inserted record of this table                        
+                                let [othertable, otherfield] = record[k].replace("${", "").replace("}", "").split(".") ;
+                                if(recordCache[othertable]){
+                                    record[k] = recordCache[othertable][otherfield] ;
                                 }
                             }
-                            if(hasPkValue){
-                                //has PK value
-                                tx.getByPk(table, record, (err, recordDb)=>{
-                                    if(err) { return cb(err) ;}
-                                    if(recordDb){
-                                        //already exists, update
-                                        tx.update(table, record, (err, updatedRecord)=>{
-                                            if(err){ return cb(err); }
-                                            results.push({
-                                                action: "update",
-                                                table : table,
-                                                record: updatedRecord
-                                            }) ;
-                                            recordCache[table] = updatedRecord ;
-                                            cb() ;
-                                        });
-                                    }else{
-                                        //not exists yet, insert
-                                        tx.insert(table, record, (err, insertedRecord)=>{
-                                            if(err){ return cb(err); }
-                                            results.push({
-                                                action: "insert",
-                                                table : table,
-                                                record: insertedRecord
-                                            }) ;
-                                            recordCache[table] = insertedRecord ;
-                                            cb() ;
-                                        }) ;
-                                    }
+                        }
+                    }
+                } ;
+                let job = new AsyncJob(AsyncJob.SERIES) ;
+                
+                for(let change of changeSet){
+                    let record = change.record ;
+                    
+                    let table = change.table ;
+                    let action = change.action ;
+                    if(action === "insert"){
+                        job.push((cb)=>{
+                            updatePlaceholder(record) ;
+                            tx.insert(table, record, (err, insertedRecord)=>{
+                                if(err){ return cb(err); }
+                                results.push({
+                                    action: "insert",
+                                    table : table,
+                                    record: insertedRecord
                                 }) ;
-                            }else{
-                                //no pk in the record, insert
-                                tx.insert(table, record, (err, insertedRecord)=>{
-                                    if(err){ return cb(err); }
-                                    results.push({
-                                        action: "insert",
-                                        table : table,
-                                        record: insertedRecord
+                                recordCache[table] = insertedRecord ;
+                                cb() ;
+                            }) ;
+                        });
+                    }
+                    if(action === "update"){
+                        job.push((cb)=>{
+                            updatePlaceholder(record) ;
+                            tx.update(table, record, (err, updatedRecord)=>{
+                                if(err){ return cb(err); }
+                                results.push({
+                                    action: "update",
+                                    table : table,
+                                    record: updatedRecord
+                                }) ;
+                                recordCache[table] = updatedRecord ;
+                                cb() ;
+                            }) ;
+                        });
+                    }
+                    if(action === "remove"){
+                        job.push((cb)=>{
+                            updatePlaceholder(record) ;
+                            tx.remove(table, record, (err)=>{
+                                if(err){ return cb(err); }
+                                results.push({
+                                    action: "remove",
+                                    table : table
+                                }) ;
+                                cb() ;
+                            }) ;
+                        });
+                    }
+                    if(!action || action === "auto"){
+                        job.push((cb)=>{
+                            updatePlaceholder(record) ;
+                            tx.getPrimaryKey(table, (err, primaryKey)=>{
+                                if(err) { return cb(err) ;}
+                                let hasPkValue = true ;
+                                if(Object.keys(record).length < primaryKey.length){
+                                    hasPkValue = false;
+                                }
+                                for(let k of primaryKey){
+                                    if(Object.keys(record).indexOf(k) === -1){
+                                        hasPkValue = false ;
+                                        break;
+                                    }
+                                }
+                                if(hasPkValue){
+                                    //has PK value
+                                    tx.getByPk(table, record, (err, recordDb)=>{
+                                        if(err) { return cb(err) ;}
+                                        if(recordDb){
+                                            //already exists, update
+                                            tx.update(table, record, (err, updatedRecord)=>{
+                                                if(err){ return cb(err); }
+                                                results.push({
+                                                    action: "update",
+                                                    table : table,
+                                                    record: updatedRecord
+                                                }) ;
+                                                recordCache[table] = updatedRecord ;
+                                                cb() ;
+                                            });
+                                        }else{
+                                            //not exists yet, insert
+                                            tx.insert(table, record, (err, insertedRecord)=>{
+                                                if(err){ return cb(err); }
+                                                results.push({
+                                                    action: "insert",
+                                                    table : table,
+                                                    record: insertedRecord
+                                                }) ;
+                                                recordCache[table] = insertedRecord ;
+                                                cb() ;
+                                            }) ;
+                                        }
                                     }) ;
-                                    recordCache[table] = insertedRecord ;
-                                    cb() ;
+                                }else{
+                                    //no pk in the record, insert
+                                    tx.insert(table, record, (err, insertedRecord)=>{
+                                        if(err){ return cb(err); }
+                                        results.push({
+                                            action: "insert",
+                                            table : table,
+                                            record: insertedRecord
+                                        }) ;
+                                        recordCache[table] = insertedRecord ;
+                                        cb() ;
+                                    });
+                                }
+                            }) ;
+                        });
+                    }
+                }
+                job.async((err)=>{
+                    if(err){ return done(err) ;}
+                    done(null, results) ;
+                }) ;
+            } ;
+        }) ;
+        this.backend.customClientInit.push(function(client){
+            let interceptorsByActions = {} ;
+            for(let extension of VeloxDatabase.extensions){
+                if(extension.extendsClient){                
+                    Object.keys(extension.extendsClient).forEach((key)=> {
+                        client[key] = extension.extendsClient[key];
+                    });
+                }
+                if(extension.interceptClientQueries){
+                    for(let interception of extension.interceptClientQueries){
+                        if(!interceptorsByActions[interception.name]){
+                            interceptorsByActions[interception.name] = [] ;
+                        }
+                        interceptorsByActions[interception.name].push(interception) ;
+                    }
+                }
+            }
+            var callOneInterceptor = (interceptor, args, callback)=>{
+                if(!interceptor){ return callback() ;}
+                if(interceptor.length === args.length){
+                    try{
+                        interceptor.apply(client, args) ;
+                        callback() ;
+                    }catch(err){
+                        callback(err) ;
+                    }
+                }else{
+                    interceptor.apply(client, args.concat([callback])) ;
+                }
+            } ;
+            for(let actionName of Object.keys(interceptorsByActions)){
+                let interceptors = interceptorsByActions[actionName] ;
+                let originalFunction = client[actionName] ;
+                client[actionName] = function(){
+                    let args = Array.prototype.slice.call(arguments) ;
+                    let tableName = args[0] ;
+                    let realCallback = args.pop();
+                    if((actionName === "query" || actionName === "queryFirst") && args.length === 1){
+                        //called without params, add them
+                        args.push([]) ;
+                    }
+                    let jobBefore = new AsyncJob(AsyncJob.SERIES) ;
+                    for(let int of interceptors.filter(function(int){return !int.table || (int.table === tableName && int.before) ;})){
+                        jobBefore.push((cb)=>{
+                            callOneInterceptor(int.before, args, cb) ;
+                        });
+                    }
+                    jobBefore.async((err)=>{
+                        if(err){ return realCallback(err) ; }
+                        originalFunction.apply(this, args.concat([function(err){
+                            if(err){
+                                return realCallback(err) ;
+                            }
+                            args = Array.prototype.slice.call(arguments) ;
+                            args = args.splice(1) ;
+                            let jobAfter = new AsyncJob(AsyncJob.SERIES) ;
+                            for(let int of interceptors.filter(function(int){return !int.table  || (int.table === tableName && int.after) ;})){
+                                jobAfter.push((cb)=>{
+                                    callOneInterceptor(int.after, args, cb) ;
                                 });
                             }
-                        }) ;
-                    });
-                }
+                            jobAfter.async((err)=>{
+                                if(err){ return realCallback(err); }
+                                realCallback.apply(null, [null].concat(args)) ;
+                            }) ;
+                        }.bind(this)])) ;
+                    }) ;
+                }.bind(client) ;
             }
-            job.async((err)=>{
-                if(err){ return done(err) ;}
-                done(null, results) ;
-            }) ;
-        } ;
-        let interceptorsByActions = {} ;
-        for(let extension of VeloxDatabase.extensions){
-            if(extension.extendsClient){                
-                Object.keys(extension.extendsClient).forEach((key)=> {
-                    client[key] = extension.extendsClient[key];
-                });
-            }
-            if(extension.interceptClientQueries){
-                for(let interception of extension.interceptClientQueries){
-                    if(!interceptorsByActions[interception.name]){
-                        interceptorsByActions[interception.name] = [] ;
-                    }
-                    interceptorsByActions[interception.name].push(interception) ;
-                }
-            }
-        }
-        var callOneInterceptor = (interceptor, args, callback)=>{
-            if(!interceptor){ return callback() ;}
-            if(interceptor.length === args.length){
-                try{
-                    interceptor.apply(client, args) ;
-                    callback() ;
-                }catch(err){
-                    callback(err) ;
-                }
-            }else{
-                interceptor.apply(client, args.concat([callback])) ;
-            }
-        } ;
-        for(let actionName of Object.keys(interceptorsByActions)){
-            let interceptors = interceptorsByActions[actionName] ;
-            let originalFunction = client[actionName] ;
-            client[actionName] = function(){
-                let args = Array.prototype.slice.call(arguments) ;
-                let tableName = args[0] ;
-                let realCallback = args.pop();
-                let jobBefore = new AsyncJob(AsyncJob.SERIES) ;
-                for(let int of interceptors.filter(function(int){return int.table === tableName && int.before ;})){
-                    jobBefore.push((cb)=>{
-                        callOneInterceptor(int.before, args, cb) ;
-                    });
-                }
-                jobBefore.async((err)=>{
-                    if(err){ return realCallback(err) ; }
-                    originalFunction.apply(this, args.concat([function(err){
-                        if(err){
-                            return realCallback(err) ;
-                        }
-                        args = Array.prototype.slice.call(arguments) ;
-                        args = args.splice(1) ;
-                        let jobAfter = new AsyncJob(AsyncJob.SERIES) ;
-                        for(let int of interceptors.filter(function(int){return int.table === tableName && int.after ;})){
-                            jobAfter.push((cb)=>{
-                                callOneInterceptor(int.after, args, cb) ;
-                            });
-                        }
-                        jobAfter.async((err)=>{
-                            if(err){ return realCallback(err); }
-                            realCallback.apply(null, [null].concat(args)) ;
-                        }) ;
-                    }.bind(this)])) ;
-                }) ;
-            }.bind(client) ;
-        }
+        });
     }
 
     /**
@@ -400,9 +449,6 @@ class VeloxDatabase {
     inDatabase(callbackDoInDb, callbackDone){
         this.backend.open((err, client)=>{
             if(err){ return callbackDone(err); }
-            this._prepareClient(client) ;
-           
-
             try {
                 callbackDoInDb(client, function(err){
                     client.close() ;
@@ -536,7 +582,6 @@ class VeloxDatabase {
             if(err){ return callbackDone(err) ;}
             
             client.transaction((tx, done)=>{
-                this._prepareClient(client) ;
                 callbackDoTransaction(client, done) ;
             }, function(err){ //explicit use of function instead of arrow to have argument variable
                 client.close() ;

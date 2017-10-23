@@ -392,6 +392,41 @@ class VeloxUserManagment{
 
                     next() ;
                 } ;
+            },
+
+            /**
+             * put the db object on the req object with context initialized to properly handle user right
+             */
+            getDbInstanceMiddleware : function(){
+                return (req, res, next)=>{
+                    let dbOriginal = this.db;
+                    if(req.db){
+                        dbOriginal = req.db ;
+                    }
+                    let proxyDb = {} ;
+                    for(let f of Object.getOwnPropertyNames(dbOriginal).concat(Object.getOwnPropertyNames(dbOriginal.__proto__))){
+                        if(typeof(dbOriginal[f]) === "function"){
+                            proxyDb[f] = dbOriginal[f].bind(dbOriginal) ;
+                        }
+                    }
+                    let _inDatabase = dbOriginal.inDatabase ;
+                    proxyDb.inDatabase = (bodyFunc, callback)=>{
+                        _inDatabase.bind(dbOriginal)((client, done)=>{
+                            this._setContext(client, req) ;
+
+                            bodyFunc(client, done) ;
+                        }, callback) ;
+                    } ;
+                    let _transaction = dbOriginal.transaction ;
+                    proxyDb.transaction = (bodyFunc, callback)=>{
+                        _transaction.bind(dbOriginal)((client, done)=>{
+                            this._setContext(client, req) ;
+                            bodyFunc(client, done) ;
+                        }, callback) ;
+                    } ;
+                    req.db = proxyDb ;
+                    next() ;
+                } ;
             }
         } ;
 
@@ -417,6 +452,7 @@ class VeloxUserManagment{
 
                 
                 
+                
                 this.configurePassport(passport, {
                     usernameField : options.usernameField,
                     passwordField : options.passwordField,
@@ -426,6 +462,7 @@ class VeloxUserManagment{
 
                 app.use(this.getSessionCheckMiddleware(options.sessionCheck, globalDatabaseOptions)) ;
                 
+                app.use(this.getDbInstanceMiddleware()) ;
 
                 app.post(options.authEndPoint || "/auth/user",
                     passport.authenticate('local'),
@@ -529,39 +566,87 @@ class VeloxUserManagment{
                 return "velox_user" ;
             }
         };
+
         if(this.options.restrictedTables){
+            this.extendsClient.unsafe = function(unsafeFun, callback){
+                if(!callback){ callback = function(){} ;}
+                let unsafeClient = this.clone() ;
+                unsafeClient.disableRestriction = true ;
+                unsafeFun(unsafeClient, function(err){
+                    if(err){ callback(err) ;}
+                    callback.apply(null, arguments) ;
+                }.bind(this)) ;
+            } ;
+            this.interceptClientQueries.push({name: "query", before: function(sql, params, callback){
+                if(!this.disableRestriction){
+                    return callback("You can't execute direct query in safe mode, you must use unsafe mode. client.unsafe((client, done)=>{ client.query('unsafe query here', done) ;}, (err)=>{ // continue here is safe mode}");
+                }
+                callback() ;
+            }}) ;
+            this.interceptClientQueries.push({name: "queryFirst", before: function(sql, params, callback){
+                if(!this.disableRestriction){
+                    return callback("You can't execute direct query in safe mode, you must use unsafe mode. client.unsafe((client, done)=>{ client.queryFirst('unsafe query here', done) ;}, (err)=>{ // continue here is safe mode}") ;
+                }
+                callback() ;
+            }}) ;
+            let handleHiddenColumns = function(getTableFunc, hiddenCols){
+                let sql = getTableFunc.bind(this)() ;
+                if(!hiddenCols) { return sql ;}
+                return `(SELECT *, ${hiddenCols.map((c)=>{ return " NULL AS "+c ;}).join(',')} FROM ${sql} subH)` ;
+            } ;
             for(let table of this.options.restrictedTables){
-                if(table.realmCol){
+                if(table.readCondition){
+                    //restrict on arbitrary where condition
+                    this.extendsClient["getTable_"+table.name] = function(){
+                        return handleHiddenColumns.bind(this)(function(){
+                            var client = this ; //this is the db client
+                            if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
+                                return `
+                                    (SELECT *
+                                    FROM
+                                    ${table.name} 
+                                    WHERE ${table.readCondition.replace(/\$user_uid/g, "'"+client.context.req.user.uid+"'")} )
+                                `;
+                            }else{
+                                return table.name ;
+                            }
+                        }, table.hiddenCols) ;
+                    };
+                }else if(table.realmCol){
                     //restrict on records linked to user realm
                     this.extendsClient["getTable_"+table.name] = function(){
-                        var client = this ; //this is the db client
-                        if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
-                            return `
-                                (SELECT DISTINCT t.*
-                                FROM
-                                ${table.name} t
-                                JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
-                                WHERE r.user_uid = '${client.context.req.user.uid}')
-                            `;
-                        }else{
-                            return table.name ;
-                        }
+                        return handleHiddenColumns.bind(this)(function(){
+                            var client = this ; //this is the db client
+                            if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
+                                return `
+                                    (SELECT DISTINCT t.*
+                                    FROM
+                                    ${table.name} t
+                                    JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
+                                    WHERE r.user_uid = '${client.context.req.user.uid}')
+                                `;
+                            }else{
+                                return table.name ;
+                            }
+                        }, table.hiddenCols) ;
                     } ;
                 } else if (table.userCol){
                     //restrict on records linked to user
                     this.extendsClient["getTable_"+table.name] = function(){
-                        var client = this ; //this is the db client
-                        if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
-                            return `
-                                (SELECT DISTINCT t.*
-                                FROM
-                                ${table.name} t
-                                WHERE ${table.userCol} = '${client.context.req.user.uid}')
-                            `;
-                        }else{
-                            return table.name ;
-                        }
-                    } ;
+                        return handleHiddenColumns.bind(this)(function(){
+                            var client = this ; //this is the db client
+                            if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
+                                return `
+                                    (SELECT DISTINCT t.*
+                                    FROM
+                                    ${table.name} t
+                                    WHERE ${table.userCol} = '${client.context.req.user.uid}')
+                                `;
+                            }else{
+                                return table.name ;
+                            }
+                        }, table.hiddenCols)  ;
+                    };
                 } else if (table.hidden){
                     //hide all records
                     this.extendsClient["getTable_"+table.name] = function(){
@@ -672,7 +757,10 @@ class VeloxUserManagment{
                     let userRestrict = function(tableName, record, callback){
                         if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
                             //check current user is allowed on this record
-                            if(this.context.req.user !== record[table.userCol]){
+                            if(!record[table.userCol]){
+                                record[table.userCol] = this.context.req.user.uid;
+                            }
+                            if(this.context.req.user.uid !== record[table.userCol]){
                                 return callback("You are not allowed for "+tableName) ;
                             }
                             callback();
@@ -799,10 +887,10 @@ class VeloxUserManagment{
             //automatically link current user to this new realm
 
             //search profile to use
-            this.queryFirst("SELECT profile_code FROM velox_link_user_realm WHERE user_uid = $1 LIMIT 1", [this.context.req.user.uid], (err, profile)=>{
+            this._queryFirst("SELECT profile_code FROM velox_link_user_realm WHERE user_uid = $1 LIMIT 1", [this.context.req.user.uid], (err, profile)=>{
                 if(err){ return callback(err) ;}
                 //don't use insert on purpose to avoid right check that will say that this user does not belong to this realm
-                this.query("INSERT INTO velox_link_user_realm(user_uid, realm_code, profile_code) VALUES ($1, $2, $3)", [this.context.req.user.uid, realm.code, profile.profile_code], callback) ;
+                this._query("INSERT INTO velox_link_user_realm(user_uid, realm_code, profile_code) VALUES ($1, $2, $3)", [this.context.req.user.uid, realm.code, profile.profile_code], callback) ;
             }) ;
             
         }else{
@@ -854,7 +942,7 @@ class VeloxUserManagment{
                 sql = "SELECT u.*, l.profile_code as profile FROM velox_user u JOIN velox_link_user_realm l ON u.uid = l.user_uid WHERE l.realm_code = $1 AND u.login = $2 AND u.disabled = FALSE AND u.active = TRUE" ;
                 params = [realm, login] ;
             }
-            client.query(sql, params, (err, results)=>{
+            client._query(sql, params, (err, results)=>{
                 if(err){ return done(err); }
 
                 if(results.rows.length === 0){
@@ -960,7 +1048,7 @@ class VeloxUserManagment{
         db.transaction((client, done)=>{
             let sql = "SELECT * FROM velox_user WHERE activation_token = $1 AND active = FALSE" ;
             let params = [activationToken];
-            client.query(sql, params, (err, results)=>{
+            client._query(sql, params, (err, results)=>{
                 if(err){ return done(err); }
 
                 if(results.rows.length === 0){

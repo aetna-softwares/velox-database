@@ -153,14 +153,14 @@ class VeloxSqlModifTracker{
      * @param {function(err)} callback 
      */
     addColumnToTables(backend, tx, columnName, columnDef, callback){
-         tx.query(this.getTablesMissingColumn(backend, columnName), (err, result)=>{
+         tx._query(this.getTablesMissingColumn(backend, columnName), (err, result)=>{
             if(err){ return callback(err); }
              
             let alertJob = new AsyncJob(AsyncJob.SERIES) ;
             for(let r of result.rows){
                 if(this.tablesToTrack(r.table_name)) {
                     alertJob.push((cb)=>{
-                        tx.query(this.getAlterAddColumn(backend, r.table_name, columnName, columnDef), cb) ;
+                        tx._query(this.getAlterAddColumn(backend, r.table_name, columnName, columnDef), cb) ;
                     }) ;
                 }
             }
@@ -177,7 +177,7 @@ class VeloxSqlModifTracker{
      * @param {function(Error)} callback 
      */
     createTriggerForTables(backend, tx, triggerCreateFunc, callback){
-         tx.query(this.getAllTables(backend), (err, result)=>{
+         tx._query(this.getAllTables(backend), (err, result)=>{
             if(err){ return callback(err); }
              
             let alertJob = new AsyncJob(AsyncJob.SERIES) ;
@@ -276,13 +276,13 @@ class VeloxSqlModifTracker{
      */
     createSequenceIfNotExists(backend, tx, name, callback){
         if(backend === "pg"){
-            tx.query(`SELECT c.relname FROM pg_class c WHERE c.relkind = 'S' and relname=$1`,[name], (err, result)=>{
+            tx._query(`SELECT c.relname FROM pg_class c WHERE c.relkind = 'S' and relname=$1`,[name], (err, result)=>{
                 if(err){ return callback(err); }
                 if(result.rows.length > 0){
                     return callback() ;//already exists
                 }
                 //create
-                tx.query(`CREATE SEQUENCE ${name} START 1`, callback) ;
+                tx._query(`CREATE SEQUENCE ${name} START 1`, callback) ;
             }) ;
         } else {
             callback("not implemented for backend "+backend) ;
@@ -299,20 +299,20 @@ class VeloxSqlModifTracker{
      */
     createTriggerBeforeUpdate(backend, tx, table, callback){
         if(backend === "pg"){
-            tx.query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_onupdate ON ${table}`, (err)=>{
+            tx._query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_onupdate ON ${table}`, (err)=>{
                 if(err){ return callback(err); }
 
                 this.createSequenceIfNotExists(backend, tx, `velox_modiftrack_table_version_${table}`, (err)=>{
                     if(err){ return callback(err); }
 
-                    tx.query("select column_name from information_schema.columns where table_name=$1", [table], (err, result)=>{
+                    tx._query("select column_name from information_schema.columns where table_name=$1", [table], (err, result)=>{
                         if(err){ return callback(err); }
 
                         let columns = result.rows.map((r)=>{return r.column_name;}).filter((c)=>{
                             return c.indexOf("velox_") !== 0 ;
                         }) ;
 
-                        tx.query(`select kc.column_name 
+                        tx._query(`select kc.column_name 
                             from  
                                 information_schema.table_constraints tc
                                 JOIN information_schema.key_column_usage kc ON kc.table_name = tc.table_name and kc.table_schema = tc.table_schema
@@ -379,9 +379,9 @@ class VeloxSqlModifTracker{
                             $$ 
                             LANGUAGE 'plpgsql'` ;
                             
-                            tx.query(trig, (err)=>{
+                            tx._query(trig, (err)=>{
                                 if(err){ return callback(err); }
-                                tx.query(`CREATE TRIGGER trig_velox_modiftrack_${table}_onupdate BEFORE UPDATE ON ${table} 
+                                tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_onupdate BEFORE UPDATE ON ${table} 
                                 FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_onupdate()`, (err)=>{
                                     if(err){ return callback(err); }
                                     callback() ;
@@ -405,7 +405,7 @@ class VeloxSqlModifTracker{
      */
     createTriggerBeforeInsert(backend, tx, table, callback){
         if(backend === "pg"){
-            tx.query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_oninsert ON ${table}`, (err)=>{
+            tx._query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_oninsert ON ${table}`, (err)=>{
                 if(err){ return callback(err); }
                 let trig = `CREATE OR REPLACE FUNCTION func_velox_modiftrack_${table}_oninsert() RETURNS trigger AS 
                 $$
@@ -441,9 +441,9 @@ class VeloxSqlModifTracker{
                 $$ 
                 LANGUAGE 'plpgsql'` ;
                 
-                tx.query(trig, (err)=>{
+                tx._query(trig, (err)=>{
                     if(err){ return callback(err); }
-                    tx.query(`CREATE TRIGGER trig_velox_modiftrack_${table}_oninsert BEFORE INSERT ON ${table} 
+                    tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_oninsert BEFORE INSERT ON ${table} 
                     FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_oninsert()`, (err)=>{
                         if(err){ return callback(err); }
                         callback() ;
