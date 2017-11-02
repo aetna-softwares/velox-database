@@ -779,6 +779,10 @@ class VeloxDbPgClient {
         this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
 
+            if(!schema[table]){
+                return callback("Unkown table "+table) ;
+            }
+
             let columns = schema[table].columns ;
 
             let selectFrom = null;
