@@ -568,6 +568,9 @@ class VeloxUserManagment{
         };
 
         if(this.options.restrictedTables){
+            this.extendsClient.isUnsafe = function(){
+                return !!this.disableRestriction ;
+            } ;
             this.extendsClient.unsafe = function(unsafeFun, callback){
                 if(!callback){ callback = function(){} ;}
                 let unsafeClient = this.clone() ;
@@ -591,7 +594,7 @@ class VeloxUserManagment{
             }}) ;
             let handleHiddenColumns = function(getTableFunc, hiddenCols){
                 let sql = getTableFunc.bind(this)() ;
-                if(!hiddenCols) { return sql ;}
+                if(!hiddenCols || this.disableRestriction) { return sql ;}
                 return `(SELECT *, ${hiddenCols.map((c)=>{ return " NULL AS "+c ;}).join(',')} FROM ${sql} subH)` ;
             } ;
             for(let table of this.options.restrictedTables){
