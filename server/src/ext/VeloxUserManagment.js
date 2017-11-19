@@ -87,7 +87,7 @@ class VeloxUserManagment{
      * @property {string} [refreshEndPoint] the refresh user end point (default : "/refreshUser")
      * @property {string} [activateEndPoint] the activation user end point (default : "/activateUser")
      * @property {string} [createEndPoint] the activation user end point (default : "/createUser")
-     * @property {boolean} [mustActivate] user must activate account with tocket (default: false)
+     * @property {boolean} [mustActivate] user must activate account with token (default: false)
      * @property {object} [sessionOptions] custom options for express-session
      * @property {object} [sessionCheck] option for session check
      * @property {object} [google] option for google authentication
