@@ -82,8 +82,12 @@ class VeloxSqlUpdater {
                 return 1;
             }else if(c1.sinceVersion < c2.sinceVersion){
                 return -1;
+            }else if(c1.index > c2.index){
+                return 1 ;
+            }else if(c1.index === c2.index){
+                return 0 ;
             }else{
-                return c1.index > c2.index ;
+                return -1;
             }
         }) ;
     }

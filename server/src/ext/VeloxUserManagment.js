@@ -61,7 +61,9 @@ class VeloxUserManagment{
      * @property {int} [insertMinProfileLevel] the minimum profile level required to do insert action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
      * @property {int} [updateMinProfileLevel] the minimum profile level required to do update action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
      * @property {int} [removeMinProfileLevel] the minimum profile level required to do remove action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
+     * @property {int} [readMinProfileLevel] the minimum profile level required to do remove action on this table (note that highest level is the lowest number, ie 0 is the top admin level)
      * @property {int} [minProfileLevel] shortcut to set insertMinProfileLevel, updateMinProfileLevel, removeMinProfileLevel at once
+     * @property {int} [allMinProfileLevel] shortcut to set insertMinProfileLevel, updateMinProfileLevel, removeMinProfileLevel, readMinProfileLevel at once
      */
 
 
@@ -669,12 +671,19 @@ class VeloxUserManagment{
                 var insertMinProfileLevel = table.insertMinProfileLevel;
                 var updateMinProfileLevel = table.updateMinProfileLevel;
                 var removeMinProfileLevel = table.removeMinProfileLevel;
+                var readMinProfileLevel = table.readMinProfileLevel;
                 if(table.minProfileLevel){
                     insertMinProfileLevel = insertMinProfileLevel === undefined?table.minProfileLevel:insertMinProfileLevel;
                     updateMinProfileLevel = updateMinProfileLevel === undefined?table.minProfileLevel:updateMinProfileLevel;
                     removeMinProfileLevel = removeMinProfileLevel === undefined?table.minProfileLevel:removeMinProfileLevel;
                 }
-                if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel){
+                if(table.allMinProfileLevel){
+                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.allMinProfileLevel:insertMinProfileLevel;
+                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.allMinProfileLevel:updateMinProfileLevel;
+                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.allMinProfileLevel:removeMinProfileLevel;
+                    readMinProfileLevel = readMinProfileLevel === undefined?table.allMinProfileLevel:readMinProfileLevel;
+                }
+                if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel || readMinProfileLevel){
                     //action restriction on profile level
                     var createRestrictFunction = function(table, minLevel){
                         return function(tableName, record, callback){
@@ -723,6 +732,11 @@ class VeloxUserManagment{
                     if(removeMinProfileLevel !== undefined){
                         this.interceptClientQueries.push(
                             {name : "remove", table: table.name, before : createRestrictFunction(table, removeMinProfileLevel) }
+                        );
+                    }
+                    if(readMinProfileLevel !== undefined){
+                        this.interceptClientQueries.push(
+                            {name : "search", table: table.name, before : createRestrictFunction(table, readMinProfileLevel) }
                         );
                     }
                 } else if(table.realmCol){
