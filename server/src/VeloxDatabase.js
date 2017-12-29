@@ -277,6 +277,19 @@ class VeloxDatabase {
                             }) ;
                         });
                     }
+                    if(action === "removeWhere"){
+                        job.push((cb)=>{
+                            updatePlaceholder(record) ;
+                            tx.removeWhere(table, record, (err)=>{
+                                if(err){ return cb(err); }
+                                results.push({
+                                    action: "removeWhere",
+                                    table : table
+                                }) ;
+                                cb() ;
+                            }) ;
+                        });
+                    }
                     if(!action || action === "auto"){
                         job.push((cb)=>{
                             updatePlaceholder(record) ;

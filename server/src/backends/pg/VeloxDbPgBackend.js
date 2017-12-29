@@ -519,6 +519,41 @@ class VeloxDbPgClient {
             this._query(sql, params, callback) ;
         }) ;
     }
+    
+    /**
+     * Delete a record in the table following conditions
+     * 
+     * @example
+     * //delete by simple column
+     * client.removeWhere("foo", {"bar": 2}, (err)=>{...})
+     * //delete by condition
+     * client.removeWhere("foo", {"bar": {ope : ">", value : 1}}, (err)=>{...})
+     * 
+     * @param {string} table the table name
+     * @param {object} condition the search condition
+     * @param {function(Error)} callback called when done
+     */
+    removeWhere(table, conditions, callback){
+
+        this.getSchema((err, schema)=>{
+            if(err){ return callback(err); }
+
+            if(!schema[table]){
+                return callback("Unkown table "+table) ;
+            }
+
+            let columns = schema[table].columns ;
+            try {
+                var {where, params} = this._prepareWhereCondition(columns, conditions, table) ;
+            }catch(e){
+                callback(e) ;
+            }
+            
+            let sql = `DELETE FROM ${table} WHERE ${where.join(" AND ")}` ;
+
+            this._query(sql, params, callback) ;
+        }) ;
+    }
 
 
     /**
@@ -733,6 +768,57 @@ class VeloxDbPgClient {
         }) ;
     }
 
+    _prepareWhereCondition(columns, search, table){
+        let where = [];
+        let params = [] ;
+        for(let c of columns){
+            if(search[c.name] !== undefined){
+                let value = search[c.name] ;
+                let ope = "=" ;
+                if(typeof(value) === "object" && !Array.isArray(value)){
+                    ope = value.ope ;
+                    value = value.value ;
+                    if(!ope){
+                        throw ("Search with special condition wrong syntax. Expected {ope: ..., value: ...}. received "+JSON.stringify(search)) ;
+                    }
+                }else{
+                    if(Array.isArray(value)){
+                        ope = "IN" ;
+                    }else if(value.indexOf("%") !== -1){
+                        ope = "ILIKE" ;
+                    }                        
+                }
+
+                if(ope.toUpperCase() === "IN" || ope.toUpperCase() === "NOT IN"){
+                    if(!Array.isArray(value) || value.length === 0){
+                        throw ("Search in table "+table+" failed. Search operand IN provided with no value. Expected an array with at least one value") ;
+                    }
+                    let wVals = [] ;
+                    for(let v of value){
+                        params.push(v) ;
+                        wVals.push("$"+params.length) ;
+                    }
+                    where.push("t."+c.name+" "+ope+" ("+wVals.join(",")+")") ;
+                } else if (ope.toUpperCase() === "BETWEEN"){
+                    if(!Array.isArray(value) || value.length !== 2){
+                        throw ("Search in table "+table+" failed. Search operand BETWEEN provided with wrong value. Expected an array with 2 values") ;
+                    }
+                    params.push(value[0]) ;
+                    params.push(value[1]) ;
+                    where.push("t."+c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
+                } else {
+                    //simple value ope
+                    if(ope === "=" && value === null){
+                        where.push("t."+c.name+" IS NULL") ;
+                    }else{
+                        params.push(value) ;
+                        where.push("t."+c.name+" "+ope+" $"+params.length) ;
+                    }
+                }
+            }
+        }
+        return {where: where, params: params};
+    }
 
     /**
      * Prepare the search SQL
@@ -794,55 +880,11 @@ class VeloxDbPgClient {
             let select = selectFrom.select ;
             let from = selectFrom.from ;
             let aliases = selectFrom.aliases;
-            let where = [];
-            let params = [] ;
-            for(let c of columns){
-                if(search[c.name] !== undefined){
-                    let value = search[c.name] ;
-                    let ope = "=" ;
-                    if(typeof(value) === "object" && !Array.isArray(value)){
-                        ope = value.ope ;
-                        value = value.value ;
-                        if(!ope){
-                            return callback("Search with special condition wrong syntax. Expected {ope: ..., value: ...}. received "+JSON.stringify(search)) ;
-                        }
-                    }else{
-                        if(Array.isArray(value)){
-                            ope = "IN" ;
-                        }else if(value.indexOf("%") !== -1){
-                            ope = "ILIKE" ;
-                        }                        
-                    }
-
-                    if(ope.toUpperCase() === "IN" || ope.toUpperCase() === "NOT IN"){
-                        if(!Array.isArray(value) || value.length === 0){
-                            return callback("Search in table "+table+" failed. Search operand IN provided with no value. Expected an array with at least one value") ;
-                        }
-                        let wVals = [] ;
-                        for(let v of value){
-                            params.push(v) ;
-                            wVals.push("$"+params.length) ;
-                        }
-                        where.push("t."+c.name+" "+ope+" ("+wVals.join(",")+")") ;
-                    } else if (ope.toUpperCase() === "BETWEEN"){
-                        if(!Array.isArray(value) || value.length !== 2){
-                            return callback("Search in table "+table+" failed. Search operand BETWEEN provided with wrong value. Expected an array with 2 values") ;
-                        }
-                        params.push(value[0]) ;
-                        params.push(value[1]) ;
-                        where.push("t."+c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
-                    } else {
-                        //simple value ope
-                        if(ope === "=" && value === null){
-                            where.push("t."+c.name+" IS NULL") ;
-                        }else{
-                            params.push(value) ;
-                            where.push("t."+c.name+" "+ope+" $"+params.length) ;
-                        }
-                    }
-                }
+            try {
+                var {where, params} = this._prepareWhereCondition(columns, search, table) ;
+            }catch(e){
+                callback(e) ;
             }
-
 
 
             if(orderBy){
