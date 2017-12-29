@@ -1351,7 +1351,7 @@ class VeloxDbPgBackend {
                         this.logger.error("Can't connect to template1 to create database");
                         return callback(err) ;
                     }
-                    clientTemplate._query("CREATE DATABASE "+this.options.database, [], (err)=>{
+                    clientTemplate.query("CREATE DATABASE "+this.options.database, [], (err)=>{
                         clientTemplate.end() ;
                         if(err){
                             //CREATE query failed
