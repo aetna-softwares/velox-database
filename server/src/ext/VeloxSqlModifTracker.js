@@ -88,6 +88,21 @@ class VeloxSqlModifTracker{
                 "or an object {exclude: []} containing tables not to track" ;
             }
         }
+
+        this.interceptClientQueries = [
+            {name : "insert", before: function(table, record, callback){
+                var db = this;
+                var currentUserId = db.context?db.context.req.user.uid:null ;
+                record.velox_version_user = currentUserId ;
+                callback();
+            } },
+            {name : "update", before: function(table, record, callback){
+                var db = this;
+                var currentUserId = db.context?db.context.req.user.uid:null ;
+                record.velox_version_user = currentUserId ;
+                callback();
+            } },
+        ] ;
     }
 
     /**
