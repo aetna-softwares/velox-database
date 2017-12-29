@@ -702,7 +702,7 @@ class VeloxUserManagment{
                                     }
                                     
                                     if(thisRealmLines.length === 0){
-                                        return callback("You are not allowed for "+tableName) ;
+                                        return callback("You are not allowed for "+tableName+" (no realm line)") ;
                                     }
     
                                     let profileOk = thisRealmLines.some((r)=>{
@@ -711,7 +711,7 @@ class VeloxUserManagment{
                                     if(profileOk){
                                         callback();
                                     }else{
-                                        callback("You are not allowed for "+tableName) ;
+                                        callback("You are not allowed for "+tableName+" (profile not enough)") ;
                                     }
                                 }) ;
                             }else{
@@ -757,7 +757,7 @@ class VeloxUserManagment{
                                 }
                                 
                                 if(thisRealmLines.length === 0){
-                                    return callback("You are not allowed for "+tableName) ;
+                                    return callback("You are not allowed for "+tableName+" (no realm)") ;
                                 }
 
                                 callback();
@@ -778,7 +778,7 @@ class VeloxUserManagment{
                                 record[table.userCol] = this.context.req.user.uid;
                             }
                             if(this.context.req.user.uid !== record[table.userCol]){
-                                return callback("You are not allowed for "+tableName) ;
+                                return callback("You are not allowed for "+tableName+" (user not allowed for this record)") ;
                             }
                             callback();
                         }else{
