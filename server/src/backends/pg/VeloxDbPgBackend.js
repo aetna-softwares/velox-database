@@ -549,7 +549,7 @@ class VeloxDbPgClient {
                 callback(e) ;
             }
             
-            let sql = `DELETE FROM ${table} WHERE ${where.join(" AND ")}` ;
+            let sql = `DELETE FROM ${table} t WHERE ${where.join(" AND ")}` ;
 
             this._query(sql, params, callback) ;
         }) ;
@@ -905,6 +905,7 @@ class VeloxDbPgClient {
                 if(joinFetch){
                     //we must do some windowing
                     let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
+                    if(!pkNames){ callback("No PK defined for table "+table) ;}
                     select.push(`DENSE_RANK() OVER (ORDER BY ${pkNames}) AS velox_window_rownum`) ;
                 }else{
                     //classical offset/limit
