@@ -307,7 +307,9 @@ class VeloxDatabase {
                                 }
                                 if(hasPkValue){
                                     //has PK value
-                                    tx.getByPk(table, record, (err, recordDb)=>{
+                                    tx.unsafe((txUnsafe, done)=>{
+                                        txUnsafe.getByPk(table, record, done) ;
+                                    }, (err, recordDb)=>{
                                         if(err) { return cb(err) ;}
                                         if(recordDb){
                                             //already exists, update
