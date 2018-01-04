@@ -438,7 +438,31 @@ class VeloxDbPgClient {
                     where.push("t."+k+" = $"+params.length) ;
                 }
 
+                var orderByItems = [] ;
+            
+                if(joinFetch && joinFetch.some((j)=> { return j.orderBy;})){
+                    //there is order by clause in join fetch, force add the pk in order by
+                    let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
+                    if(!pkNames){ callback("No PK defined for table "+table) ;}
+                    orderByItems.push(pkNames) ;
+                    
+                    for(let join of joinFetch){
+                        if(join.orderBy){
+                            if(!this._checkOrderByClause(join.orderBy, schema[join.otherTable].columns)){
+                                return callback("Invalid order by clause "+join.orderBy) ;
+                            }
+                            orderByItems.push(join.orderBy.split(",").map((orderItem)=>{
+                                return aliases[join.otherTable]+"."+orderItem.trim()
+                            }).join(",")) ;
+                        }
+                    }
+                }
+                
                 let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
+                
+                if(orderByItems.length > 0){
+                    sql += ` ORDER BY ${orderByItems.join(",")}` ;
+                }
 
                 this._query(sql, params, (err, results)=>{
                     if(err){ return callback(err) ;}
@@ -820,6 +844,17 @@ class VeloxDbPgClient {
         return {where: where, params: params};
     }
 
+    _checkOrderByClause(orderBy, columns){
+        let colNames = columns.map((c)=>{ return c.name ;}) ;
+        var orderByIsRealColumn = orderBy.split(",").every((ob)=>{
+            //check we only receive a valid column name and asc/desc
+            let col = ob.replace("DESC", "").replace("desc", "")
+            .replace("ASC", "").replace("asc", "").trim() ;
+            return colNames.indexOf(col) !== -1 ;
+        })  ;
+        return orderByIsRealColumn ;
+    }
+
     /**
      * Prepare the search SQL
      * 
@@ -886,20 +921,32 @@ class VeloxDbPgClient {
                 callback(e) ;
             }
 
-
+            var orderByItems = [] ;
             if(orderBy){
-                let colNames = columns.map((c)=>{ return c.name ;}) ;
-                var orderByIsRealColumn = orderBy.split(",").every((ob)=>{
-                    //check we only receive a valid column name and asc/desc
-                    let col = ob.replace("DESC", "").replace("desc", "")
-                    .replace("ASC", "").replace("asc", "").trim() ;
-                    return colNames.indexOf(col) !== -1 ;
-                })  ;
-                    
-                if(!orderByIsRealColumn){
+                if(!this._checkOrderByClause(orderBy, columns)){
                     return callback("Invalid order by clause "+orderBy) ;
                 }
+                orderByItems.push(orderBy) ;
             }
+
+            if(joinFetch && joinFetch.some((j)=> { return j.orderBy;})){
+                //there is order by clause in join fetch, force add the pk in order by
+                let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
+                if(!pkNames){ callback("No PK defined for table "+table) ;}
+                orderByItems.push(pkNames) ;
+
+                for(let join of joinFetch){
+                    if(join.orderBy){
+                        if(!this._checkOrderByClause(join.orderBy, schema[join.otherTable].columns)){
+                            return callback("Invalid order by clause "+join.orderBy) ;
+                        }
+                        orderByItems.push(join.orderBy.split(",").map((orderItem)=>{
+                            return aliases[join.otherTable]+"."+orderItem.trim()
+                        }).join(",")) ;
+                    }
+                }
+            }
+
 
             if(limit || offset){
                 if(joinFetch){
@@ -928,8 +975,8 @@ class VeloxDbPgClient {
             if(where.length > 0){
                 sql += ` WHERE ${where.join(" AND ")}` ;
             }
-            if(orderBy){
-                sql += ` ORDER BY ${orderBy}` ;
+            if(orderByItems.length > 0){
+                sql += ` ORDER BY ${orderByItems.join(",")}` ;
             }
             if(!joinFetch && (limit || offset)){
                 //normal offset
