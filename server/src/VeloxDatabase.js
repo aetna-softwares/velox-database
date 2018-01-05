@@ -151,13 +151,13 @@ class VeloxDatabase {
                                 cb() ;
                             }) ;
                         }else if(r.search){
-                            client.search(r.table || k, r.search, r.orderBy, r.offset, r.limit, (err, records)=>{
+                            client.search(r.table || k, r.search, r.joinFetch, r.orderBy, r.offset, r.limit, (err, records)=>{
                                 if(err){ return cb(err); }
                                 results[k] = records ;
                                 cb() ;
                             }) ;
                         }else if(r.searchFirst){
-                            client.searchFirst(r.table || k, r.searchFirst, r.orderBy, (err, record)=>{
+                            client.searchFirst(r.table || k, r.searchFirst, r.joinFetch, r.orderBy, (err, record)=>{
                                 if(err){ return cb(err); }
                                 results[k] = record ;
                                 cb() ;
@@ -187,13 +187,13 @@ class VeloxDatabase {
                                 cb() ;
                             }) ;
                         }else if(r.search){
-                            client.search(r.table || k, r.search, r.orderBy, r.offset, r.limit, (err, records)=>{
+                            client.search(r.table || k, r.search, r.joinFetch, r.orderBy, r.offset, r.limit, (err, records)=>{
                                 if(err){ return cb(err); }
                                 results[k] = records ;
                                 cb() ;
                             }) ;
                         }else if(r.searchFirst){
-                            client.searchFirst(r.table || k, r.searchFirst, r.orderBy, (err, record)=>{
+                            client.searchFirst(r.table || k, r.searchFirst, r.joinFetch, r.orderBy, (err, record)=>{
                                 if(err){ return cb(err); }
                                 results[k] = record ;
                                 cb() ;
