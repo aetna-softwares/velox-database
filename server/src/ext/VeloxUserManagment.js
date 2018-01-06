@@ -600,6 +600,23 @@ class VeloxUserManagment{
                 return `(SELECT *, ${hiddenCols.map((c)=>{ return " NULL AS "+c ;}).join(',')} FROM ${sql} subH)` ;
             } ;
             for(let table of this.options.restrictedTables){
+                var insertMinProfileLevel = table.insertMinProfileLevel;
+                var updateMinProfileLevel = table.updateMinProfileLevel;
+                var removeMinProfileLevel = table.removeMinProfileLevel;
+                var readMinProfileLevel = table.readMinProfileLevel;
+                if(table.minProfileLevel){
+                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.minProfileLevel:insertMinProfileLevel;
+                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.minProfileLevel:updateMinProfileLevel;
+                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.minProfileLevel:removeMinProfileLevel;
+                }
+                if(table.allMinProfileLevel){
+                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.allMinProfileLevel:insertMinProfileLevel;
+                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.allMinProfileLevel:updateMinProfileLevel;
+                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.allMinProfileLevel:removeMinProfileLevel;
+                    readMinProfileLevel = readMinProfileLevel === undefined?table.allMinProfileLevel:readMinProfileLevel;
+                }
+
+
                 if(table.readCondition){
                     //restrict on arbitrary where condition
                     this.extendsClient["getTable_"+table.name] = function(){
@@ -623,13 +640,26 @@ class VeloxUserManagment{
                         return handleHiddenColumns.bind(this)(function(){
                             var client = this ; //this is the db client
                             if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
-                                return `
-                                    (SELECT DISTINCT t.*
-                                    FROM
-                                    ${table.name} t
-                                    JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
-                                    WHERE r.user_uid = '${client.context.req.user.uid}')
-                                `;
+                                if(readMinProfileLevel){
+                                    //restrict on all allowed realm with sufficient permission
+                                    return `
+                                        (SELECT DISTINCT t.*
+                                        FROM
+                                        ${table.name} t
+                                        JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
+                                        JOIN velox_user_profile p ON r.profile_code = p.code
+                                        WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level <= ${readMinProfileLevel})
+                                    `;
+                                }else{
+                                    //restrict only on all allowed realm
+                                    return `
+                                        (SELECT DISTINCT t.*
+                                        FROM
+                                        ${table.name} t
+                                        JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
+                                        WHERE r.user_uid = '${client.context.req.user.uid}')
+                                    `;
+                                }
                             }else{
                                 return table.name ;
                             }
@@ -668,26 +698,18 @@ class VeloxUserManagment{
                         }
                     } ;
                 }
-                var insertMinProfileLevel = table.insertMinProfileLevel;
-                var updateMinProfileLevel = table.updateMinProfileLevel;
-                var removeMinProfileLevel = table.removeMinProfileLevel;
-                var readMinProfileLevel = table.readMinProfileLevel;
-                if(table.minProfileLevel){
-                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.minProfileLevel:insertMinProfileLevel;
-                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.minProfileLevel:updateMinProfileLevel;
-                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.minProfileLevel:removeMinProfileLevel;
-                }
-                if(table.allMinProfileLevel){
-                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.allMinProfileLevel:insertMinProfileLevel;
-                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.allMinProfileLevel:updateMinProfileLevel;
-                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.allMinProfileLevel:removeMinProfileLevel;
-                    readMinProfileLevel = readMinProfileLevel === undefined?table.allMinProfileLevel:readMinProfileLevel;
-                }
-                if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel || readMinProfileLevel){
+                
+                if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel){
                     //action restriction on profile level
-                    var createRestrictFunction = function(table, minLevel){
+                    var createRestrictFunction = function(table, minLevel, action){
                         return function(tableName, record, callback){
                             if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
+                                if(action === "insert"){
+                                    if(!record[table.realmCol] && this.context && this.context.req && this.context.req.currentRealm){
+                                        record[table.realmCol] = this.context.req.currentRealm;
+                                    }
+                                }
+
                                 //check current user is allowed on this realm
                                 this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid},[{otherTable: "velox_user_profile", name: "profile"}], (err, currentUserRealms)=>{
                                     if(err){ return callback(err) ;}
@@ -702,7 +724,7 @@ class VeloxUserManagment{
                                     }
                                     
                                     if(thisRealmLines.length === 0){
-                                        return callback("You are not allowed for "+tableName+" (no realm line)") ;
+                                        return callback("You are not allowed for "+table.name+" (no realm line)") ;
                                     }
     
                                     let profileOk = thisRealmLines.some((r)=>{
@@ -711,7 +733,7 @@ class VeloxUserManagment{
                                     if(profileOk){
                                         callback();
                                     }else{
-                                        callback("You are not allowed for "+tableName+" (profile not enough)") ;
+                                        callback("You are not allowed for "+table.name+" (profile not enough)") ;
                                     }
                                 }) ;
                             }else{
@@ -721,22 +743,17 @@ class VeloxUserManagment{
                     };
                     if(insertMinProfileLevel !== undefined){
                         this.interceptClientQueries.push(
-                            {name : "insert", table: table.name, before : createRestrictFunction(table, insertMinProfileLevel) }
+                            {name : "insert", table: table.name, before : createRestrictFunction(table, insertMinProfileLevel, "insert") }
                         );
                     }
                     if(updateMinProfileLevel !== undefined){
                         this.interceptClientQueries.push(
-                            {name : "update", table: table.name, before : createRestrictFunction(table, updateMinProfileLevel) }
+                            {name : "update", table: table.name, before : createRestrictFunction(table, updateMinProfileLevel, "update") }
                         );
                     }
                     if(removeMinProfileLevel !== undefined){
                         this.interceptClientQueries.push(
-                            {name : "remove", table: table.name, before : createRestrictFunction(table, removeMinProfileLevel) }
-                        );
-                    }
-                    if(readMinProfileLevel !== undefined){
-                        this.interceptClientQueries.push(
-                            {name : "search", table: table.name, before : createRestrictFunction(table, readMinProfileLevel) }
+                            {name : "remove", table: table.name, before : createRestrictFunction(table, removeMinProfileLevel, "remove") }
                         );
                     }
                 } else if(table.realmCol){

@@ -384,7 +384,7 @@ class VeloxSqlModifTracker{
                                 -- save all modifications in tracking table
                                 IF OLD."${c}" <> NEW."${c}" THEN
                                     INSERT INTO velox_modif_track (version_record, version_table, version_date, version_user, table_name, table_uid, column_name, column_before, column_after)
-                                    VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', ${pkInOld}, '${c}' ,OLD."${c}"::varchar, NEW."${c}"::varchar) ;
+                                    VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', ${pkInOld}, '${c}', substring(OLD."${c}"::varchar, 1, 255), substring(NEW."${c}"::varchar, 1, 255)) ;
                                 END IF ;
                                 ` ;
                             }

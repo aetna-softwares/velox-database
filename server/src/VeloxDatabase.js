@@ -404,7 +404,7 @@ class VeloxDatabase {
                     let jobBefore = new AsyncJob(AsyncJob.SERIES) ;
                     for(let int of interceptors.filter(function(int){return !int.table || (int.table === tableName && int.before) ;})){
                         jobBefore.push((cb)=>{
-                            callOneInterceptor(int.before, args, cb) ;
+                            callOneInterceptor(int.before, [args[0], args[1]], cb) ;
                         });
                     }
                     jobBefore.async((err)=>{
