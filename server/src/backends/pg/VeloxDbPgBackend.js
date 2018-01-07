@@ -303,6 +303,10 @@ class VeloxDbPgClient {
                 a = a+"_" ;
             }
 
+            if(schema[table].pk.length === 0){
+                throw "Missing pk on table "+table ;
+            }
+
             for(let pk of schema[table].pk){
                 pkValue += r[a+pk] || "";
             }
