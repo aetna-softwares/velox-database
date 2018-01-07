@@ -208,78 +208,10 @@ class VeloxDbPgClient {
         let from = [`${this.getTable(table)} t`] ;
         let select = ["t.*"] ;
         let aliases = {} ;
-        aliases[table] = "t" ;
+        aliases.main = "t" ;
         if(joinFetch){
             for(let join of joinFetch){
-                let j = "";
-                
-                j += " LEFT JOIN" ;
-                
-                if(!schema[join.otherTable]){ throw ("Unknown table "+join.otherTable) ;}
-
-                let alias = "t"+from.length ;
-                aliases[join.otherTable] = alias ;
-                j += ` ${this.getTable(join.otherTable)} ${alias} ` ;
-
-                let otherField = join.otherField ;
-                if(otherField){
-                    if(!schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
-                        throw ("Unknown columns "+join.otherTable+"."+otherField) ;
-                    }
-                }
-                
-                let thisTable = join.thisTable||table;
-                if(join.thisTable){
-                    if(!schema[join.thisTable]){ throw ("Unknown table "+join.thisTable) ;}
-                }
-                let thisField = join.thisField;
-                if(thisField){
-                    if(!schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
-                        throw ("Unknown columns "+thisTable+"."+thisField) ;
-                    }
-                }
-
-                if(otherField && !thisField || !otherField && thisField){ throw ("You must set both otherField and thisField") ; }
-
-                if(otherField && thisField){
-                    j += " ON "+aliases[join.otherTable]+"."+otherField+" = "+aliases[thisTable]+"."+thisField ;
-                }else{
-                    if(!otherField){
-                        //assuming using FK
-
-                        let pairs = {} ;
-
-                        //look in this table FK
-                        for(let fk of schema[thisTable].fk){
-                            if(fk.targetTable === join.otherTable){
-                                pairs[aliases[thisTable]+"."+fk.thisColumn] = aliases[join.otherTable]+"."+fk.targetColumn ;
-                            }
-                        }
-
-                        if(Object.keys(pairs).length === 0){
-                            //look in other table FK
-                            for(let fk of schema[join.otherTable].fk){
-                                if(fk.targetTable === thisTable){
-                                    pairs[aliases[join.otherTable]+"."+fk.thisColumn] = aliases[thisTable]+"."+fk.targetColumn ;
-                                }
-                            }
-                        }
-
-                        if(Object.keys(pairs).length === 0){
-                            throw ("No otherField/thisField given and can't find in FK") ;
-                        }
-
-                        for(let left of Object.keys(pairs)){
-                            j += " ON "+left+" = "+pairs[left] ;
-                        }
-                    }
-                }
-
-                for(let col of schema[join.otherTable].columns){
-                    select.push(alias+"."+col.name+" AS "+alias+"_"+col.name) ;
-                }
-
-                from.push(j) ;
+                this._addFromJoin(join, schema, select, from, aliases, table)
             }
         }
         return {
@@ -289,13 +221,95 @@ class VeloxDbPgClient {
         } ;
     }
 
-    constructResults(schema, table, aliases, rows, joinFetch){
+    _addFromJoin(join, schema, select, from, aliases, baseTable, parentAliasId){
+        if(!parentAliasId){ parentAliasId = "main" ;}
+        let j = "";
+        j += " LEFT JOIN" ;
+        
+        if(!schema[join.otherTable]){ throw ("Unknown table "+join.otherTable) ;}
+
+        let alias = "t"+from.length ;
+        var aliasId = parentAliasId+"_"+(join.name||join.otherTable) ;
+        aliases[aliasId] = alias ;
+        j += ` ${this.getTable(join.otherTable)} ${alias} ` ;
+
+        let otherField = join.otherField ;
+        if(otherField){
+            if(!schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
+                throw ("Unknown columns "+join.otherTable+"."+otherField) ;
+            }
+        }
+        
+        let thisTable = join.thisTable||baseTable;
+        if(join.thisTable){
+            if(!schema[join.thisTable]){ throw ("Unknown table "+join.thisTable) ;}
+        }
+        let thisField = join.thisField;
+        if(thisField){
+            if(!schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
+                throw ("Unknown columns "+thisTable+"."+thisField) ;
+            }
+        }
+
+        if(otherField && !thisField || !otherField && thisField){ throw ("You must set both otherField and thisField") ; }
+
+        if(otherField && thisField){
+            j += " ON "+aliases[aliasId]+"."+otherField+" = "+aliases[parentAliasId]+"."+thisField ;
+        }else{
+            if(!otherField){
+                //assuming using FK
+
+                let pairs = {} ;
+
+                //look in this table FK
+                for(let fk of schema[thisTable].fk){
+                    if(fk.targetTable === join.otherTable){
+                        pairs[aliases[parentAliasId]+"."+fk.thisColumn] = aliases[aliasId]+"."+fk.targetColumn ;
+                    }
+                }
+
+                if(Object.keys(pairs).length === 0){
+                    //look in other table FK
+                    for(let fk of schema[join.otherTable].fk){
+                        if(fk.targetTable === thisTable){
+                            pairs[aliases[aliasId]+"."+fk.thisColumn] = aliases[parentAliasId]+"."+fk.targetColumn ;
+                        }
+                    }
+                }
+
+                if(Object.keys(pairs).length === 0){
+                    throw ("No otherField/thisField given and can't find in FK") ;
+                }
+
+                for(let left of Object.keys(pairs)){
+                    j += " ON "+left+" = "+pairs[left] ;
+                }
+            }
+        }
+
+        for(let col of schema[join.otherTable].columns){
+            select.push(alias+"."+col.name+" AS "+alias+"_"+col.name) ;
+        }
+
+        from.push(j) ;
+
+        if(join.joins){
+            for(let subJoin of join.joins){
+                this._addFromJoin(subJoin, schema, select, from, aliases, join.otherTable, aliasId) ;
+            }
+        }
+    }
+
+    
+
+    constructResults(schema, table, aliases, rows, joinFetch, aliasId){
         //aggregates records by pk
+
         let recordsByPk = [];
         let pkIndexes = {} ;
         for(let r of rows){
             let pkValue = "";
-            let a = aliases[table] ;
+            let a = aliases[aliasId||"main"] ;
             if(a === "t"){ 
                 //main table, no column prefix
                 a = "" ;
@@ -331,20 +345,23 @@ class VeloxDbPgClient {
         }
 
         //do a first loop to initialize the thisTable property because be dig inside sub join, it will provoque ambiguity
-        for(let join of joinFetch){
-            if(!join.thisTable){ join.thisTable = table; }
-        }
-        for(let join of joinFetch){
-            let thisTable = join.thisTable;
-            let otherTable = join.otherTable;
-            let joinType = join.type || "2one" ;
-            if(thisTable === table){
-                for(let rec of recordsByPk){
-                    let otherRecords = this.constructResults(schema, otherTable, aliases, rec.rows, joinFetch) ;
-                    if(joinType === "2many"){
-                        rec.record[join.name||join.otherTable] = otherRecords ;
-                    }else{
-                        rec.record[join.name||join.otherTable] = otherRecords[0]||null ;
+        if(joinFetch){
+            for(let join of joinFetch){
+                if(!join.thisTable){ join.thisTable = table; }
+            }
+            for(let join of joinFetch){
+                let thisTable = join.thisTable;
+                let otherTable = join.otherTable;
+                let joinType = join.type || "2one" ;
+                var joinAliasId = (aliasId||"main")+"_"+(join.name||join.otherTable) ;
+                if(thisTable === table){
+                    for(let rec of recordsByPk){
+                        let otherRecords = this.constructResults(schema, otherTable, aliases, rec.rows, join.joins, joinAliasId) ;
+                        if(joinType === "2many"){
+                            rec.record[join.name||join.otherTable] = otherRecords ;
+                        }else{
+                            rec.record[join.name||join.otherTable] = otherRecords[0]||null ;
+                        }
                     }
                 }
             }
@@ -352,8 +369,6 @@ class VeloxDbPgClient {
 
         return recordsByPk.map(function(rec){ return rec.record ;}) ;
     }
-
-    
 
     /**
      * @typedef VeloxDatabaseJoinFetch
@@ -443,23 +458,18 @@ class VeloxDbPgClient {
                 }
 
                 var orderByItems = [] ;
-            
-                if(joinFetch && joinFetch.some((j)=> { return j.orderBy;})){
+
+                if(joinFetch){
+                    for(let join of joinFetch){
+                        this._addOrderByJoin(join, schema, orderByItems, aliases) ;
+                    }
+                }
+
+                if(orderByItems.length > 0){
                     //there is order by clause in join fetch, force add the pk in order by
                     let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
                     if(!pkNames){ callback("No PK defined for table "+table) ;}
-                    orderByItems.push(pkNames) ;
-                    
-                    for(let join of joinFetch){
-                        if(join.orderBy){
-                            if(!this._checkOrderByClause(join.orderBy, schema[join.otherTable].columns)){
-                                return callback("Invalid order by clause "+join.orderBy) ;
-                            }
-                            orderByItems.push(join.orderBy.split(",").map((orderItem)=>{
-                                return aliases[join.otherTable]+"."+orderItem.trim()
-                            }).join(",")) ;
-                        }
-                    }
+                    orderByItems = [pkNames].concat(orderByItems) ;
                 }
                 
                 let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
@@ -487,6 +497,27 @@ class VeloxDbPgClient {
                 }) ;
             }) ;
         }) ;
+    }
+
+    _addOrderByJoin(join, schema, orderByItems, aliases, parentAliasId){
+        if(!parentAliasId){ parentAliasId = "main" ;}
+        
+        var aliasId = parentAliasId+"_"+(join.name||join.otherTable) ;
+
+        if(join.orderBy){
+            if(!this._checkOrderByClause(join.orderBy, schema[join.otherTable].columns)){
+                throw "Invalid order by clause "+join.orderBy ;
+            }
+            orderByItems.push(join.orderBy.split(",").map((orderItem)=>{
+                return aliases[aliasId]+"."+orderItem.trim() ;
+            }).join(",")) ;
+        }
+
+        if(join.joins){
+            for(let subJoin of join.joins){
+                this._addOrderByJoin(subJoin, schema, orderByItems, aliases, aliasId) ;
+            }
+        }
     }
 
     /**
@@ -933,22 +964,18 @@ class VeloxDbPgClient {
                 orderByItems.push(orderBy) ;
             }
 
-            if(joinFetch && joinFetch.some((j)=> { return j.orderBy;})){
+
+            if(joinFetch){
+                for(let join of joinFetch){
+                    this._addOrderByJoin(join, schema, orderByItems, aliases) ;
+                }
+            }
+
+            if(orderByItems.length > 0){
                 //there is order by clause in join fetch, force add the pk in order by
                 let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
                 if(!pkNames){ callback("No PK defined for table "+table) ;}
-                orderByItems.push(pkNames) ;
-
-                for(let join of joinFetch){
-                    if(join.orderBy){
-                        if(!this._checkOrderByClause(join.orderBy, schema[join.otherTable].columns)){
-                            return callback("Invalid order by clause "+join.orderBy) ;
-                        }
-                        orderByItems.push(join.orderBy.split(",").map((orderItem)=>{
-                            return aliases[join.otherTable]+"."+orderItem.trim()
-                        }).join(",")) ;
-                    }
-                }
+                orderByItems = [pkNames].concat(orderByItems) ;
             }
 
 

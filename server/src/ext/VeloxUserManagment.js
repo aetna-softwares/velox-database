@@ -72,6 +72,7 @@ class VeloxUserManagment{
      * @type {object}
      * @property {Array} [userMeta] Meta data to add on user table : [{name: "foo", type: "varchar(128)"}, {name: "bar", type: "int"}]
      * @property {Array} [profileMeta] Meta data to add on profile table : [{name: "foo", type: "varchar(128)"}, {name: "bar", type: "int"}]
+     * @property {object} [anonymousUser] The anonymous user to create on database creation. All none auth connection will be considered as anonymous
      * @property {object} [adminUser] The admin user to create on database creation
      * @property {object} [adminProfile] The admin profile to create on database creation
      * @property {object} [fixedProfiles] List of profiles to create by default in database
@@ -114,6 +115,7 @@ class VeloxUserManagment{
         this.adminProfile = options.adminProfile || null ;
         this.defaultRealms = options.defaultRealms || null ;
         this.adminUser = options.adminUser || {login: "admin", password: "admin", name: "Administrator", auth_type: "password"} ;
+        this.anonymousUser = options.anonymousUser;
         this.useProfile = options.useProfile ;
         if(this.useProfile === undefined){
             if(this.adminProfile || this.fixedProfiles){
@@ -140,9 +142,15 @@ class VeloxUserManagment{
         if(!this.adminUser.uid){
             this.adminUser.uid = uuid.v4() ;
         }
+        if(!this.anonymousUser.uid){
+            this.anonymousUser.uid = uuid.v4() ;
+        }
 
         if(this.adminUser.active === undefined){
             this.adminUser.active = true ;
+        }
+        if(this.anonymousUser.active === undefined){
+            this.anonymousUser.active = true ;
         }
 
         var self = this;
@@ -192,7 +200,13 @@ class VeloxUserManagment{
 
                 passport.deserializeUser((uid, done) => {
                     this.db.inDatabase((client,done)=>{
-                        client.getByPk("velox_user", uid, done) ;
+                        client.getByPk("velox_user", uid, [
+                            {name: "profile", otherTable: "velox_user_profile"},
+                            {name: "realms", otherTable: "velox_link_user_realm", type:"2many", joins: [
+                                {name: "realm", otherTable: "velox_user_realm"},
+                                {name: "profile", otherTable: "velox_user_profile"},
+                            ]},
+                        ], done) ;
                     },done) ;
                 });
 
@@ -243,7 +257,7 @@ class VeloxUserManagment{
 
                 let VeloxUserManagmentSessionStore = require('./VeloxUserManagmentSessionStore')(session);
                 var options = {
-                    store: new VeloxUserManagmentSessionStore(this.db),
+                    store: new VeloxUserManagmentSessionStore(this.db, this.anonymousUser),
                     rolling: true,
                     cookie: {
                         maxAge : 1000*60*60*6 //6 hours
@@ -260,6 +274,34 @@ class VeloxUserManagment{
                 }) ;
 
                 return session(options);
+            },
+            
+            /**
+             * if use anonymous mode, set the current user to anonymous if no user is logged
+             */
+            getAnynonymousMiddleware: function(anonymousUser){
+                //this is the VeloxDatabaseExpress object
+                let db = this.db;
+                return function(req, res, next){
+                    //as we allow anonymous user, if no user is authenticated, we set the current user to anonymous user
+                    if(!req.user){
+                        db.getByPk("velox_user", anonymousUser.uid, [
+                            {name: "profile", otherTable: "velox_user_profile"},
+                            {name: "realms", otherTable: "velox_link_user_realm", type: "2many", joins : [
+                                {name: "realm", otherTable: "velox_user_realm"},
+                                {name: "profile", otherTable: "velox_user_profile"},
+                            ]},
+                        ], function(err, user){
+                            if(err){ 
+                                throw "Can't get anonymous user "+err ;
+                            }
+                            req.user = user ;
+                            next() ;
+                        }) ;
+                    }else{
+                        next() ;
+                    }
+                } ;
             },
 
             /**
@@ -448,12 +490,14 @@ class VeloxUserManagment{
                 const passport = require('passport');
                 const session = require('express-session');
                 app.use(this.getSessionMiddleware(session, sessionOptions)) ;
-
+                
                 app.use(passport.initialize());
                 app.use(passport.session());
 
-                
-                
+                if(options.anonymousUser){
+                    app.use(this.getAnynonymousMiddleware(options.anonymousUser)) ;
+                }
+
                 
                 this.configurePassport(passport, {
                     usernameField : options.usernameField,
@@ -482,7 +526,9 @@ class VeloxUserManagment{
                 });
                 app.get(options.refreshEndPoint || "/refreshUser",
                     (req, res) => {
-                        if(!req.user){ return res.status(401).end("no user"); }
+                        if(!req.user){ 
+                            return res.status(401).end("no user"); 
+                        }
                         this.db.refreshUser(req.user.uid, (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
@@ -1123,10 +1169,13 @@ class VeloxUserManagment{
      */
     refreshUser(db, uid, callback){
         db.inDatabase((client, done)=>{
-            client.getByPk("velox_user", uid, (err, user)=>{
-                if(err){ return done(err); }
-                this._getFullUser(client, user, done) ;
-            });
+            client.getByPk("velox_user", uid, [
+                {name: "profile", otherTable: "velox_user_profile"},
+                {name: "realms", otherTable: "velox_link_user_realm", type:"2many", joins: [
+                    {name: "realm", otherTable: "velox_user_realm"},
+                    {name: "profile", otherTable: "velox_user_profile"},
+                ]},
+            ],  done);
         }, callback);
     }
 
@@ -1243,6 +1292,22 @@ class VeloxUserManagment{
                     }) ;
                 }
             }) ;
+
+            if(this.anonymousUser){
+                changes.push({
+                    run: (tx, cb)=>{
+                        tx.searchFirst("velox_user", {login: this.anonymousUser.login}, (err, anonUser)=>{
+                            if(err){ return cb(err); }
+                            if(anonUser){
+                                this.anonymousUser.uid = anonUser.uid;
+                                //update only the profile, other information may have been change by user
+                                return tx.update("velox_user", {uid: anonUser.uid, profile_code: this.anonymousUser.profile_code}, cb) ;
+                            }
+                            tx.insert("velox_user", this.anonymousUser, cb) ;
+                        }) ;
+                    }
+                }) ;
+            }
 
             if(this.adminUser.realms){
                 for(let realm of this.adminUser.realms){
