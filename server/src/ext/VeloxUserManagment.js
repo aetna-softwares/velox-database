@@ -946,7 +946,7 @@ class VeloxUserManagment{
      * @private
      * @param {Array} records list of found users
      */
-    removePassword(records){
+    removePassword(table, records){
         if(!records){ return; }
         if(!Array.isArray(records)){
             records = [records] ;
@@ -962,7 +962,7 @@ class VeloxUserManagment{
      * @param {object} realm the inserted realm 
      * @param {function} callback 
      */
-    afterInsertRealm(realm, callback){
+    afterInsertRealm(table, realm, callback){
         if(this.context && this.context.req && this.context.req.user){
             //automatically link current user to this new realm
 

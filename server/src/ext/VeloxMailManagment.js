@@ -47,7 +47,7 @@ class VeloxMailManagment{
         var self = this;
         
         this.interceptClientQueries = [
-            {name : "insert", table: "velox_mail", after: function(mail, callback){
+            {name : "insert", table: "velox_mail", after: function(table, mail, callback){
                 self.afterMailInsert(this, mail, callback) ;
             } },
         ] ;

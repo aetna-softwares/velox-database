@@ -414,7 +414,7 @@ class VeloxDatabase {
                                 return realCallback(err) ;
                             }
                             args = Array.prototype.slice.call(arguments) ;
-                            args = args.splice(1) ;
+                            args = [tableName].concat(args.splice(1)) ;
                             let jobAfter = new AsyncJob(AsyncJob.SERIES) ;
                             for(let int of interceptors.filter(function(int){return !int.table  || (int.table === tableName && int.after) ;})){
                                 jobAfter.push((cb)=>{
@@ -423,7 +423,7 @@ class VeloxDatabase {
                             }
                             jobAfter.async((err)=>{
                                 if(err){ return realCallback(err); }
-                                realCallback.apply(null, [null].concat(args)) ;
+                                realCallback.apply(null, [null, args[1]]) ;
                             }) ;
                         }.bind(this)])) ;
                     }) ;
