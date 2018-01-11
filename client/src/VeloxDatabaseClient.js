@@ -24,14 +24,6 @@
      * @param {VeloxDatabaseClientOptions} options database client options
      */
     function VeloxDatabaseClient() {
-        var self = this ;
-        VeloxDatabaseClient.extensions.forEach(function(extension){
-            if(extension.extendsObj){
-                Object.keys(extension.extendsObj).forEach(function (key) {
-                        self[key] = extension.extendsObj[key];
-                });
-            }
-        }) ;
     }
 
 
@@ -107,15 +99,23 @@
 
             //add extension features
             VeloxDatabaseClient.extensions.forEach(function(extension){
-                if (extension.extendsProto) {
-                    Object.keys(extension.extendsProto).forEach(function (key) {
-                        dbApi.getSchema = function(){
-                            var args = Array.prototype.slice.call(arguments) ;
-                            this[key].apply(this, args) ;
-                        }.bind(this) ;
+                if(extension.extendsObj){
+                    Object.keys(extension.extendsObj).forEach(function (key) {
+                            this[key] = extension.extendsObj[key].bind(this);
                     }.bind(this));
                 }
             }.bind(this));
+            // VeloxDatabaseClient.extensions.forEach(function(extension){
+            //     if (extension.extendsProto) {
+            //         Object.keys(extension.extendsProto).forEach(function (key) {
+            //             dbApi[key] = extension.extendsProto[key]
+            //             dbApi.getSchema = function(){
+            //                 var args = Array.prototype.slice.call(arguments) ;
+            //                 this[key].apply(this, args) ;
+            //             }.bind(this) ;
+            //         }.bind(this));
+            //     }
+            // }.bind(this));
 
             callback() ;
         }.bind(this)) ;

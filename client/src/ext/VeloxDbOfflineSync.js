@@ -5,7 +5,7 @@
     } else if (typeof define === 'function' && define.amd) {
         define(['VeloxScriptLoader'], factory);
     } else {
-        global.VeloxDatabaseClient.registerExtension(factory(global.VeloxScriptLoader));
+        global.VeloxDatabaseClient.registerExtension(factory(global.veloxScriptLoader));
     }
 }(this, (function (VeloxScriptLoader) {
     'use strict';
@@ -52,6 +52,90 @@
 
     extension.extendsObj = {};
     extension.extendsProto = {};
+    extension.extendsGlobal = {};
+
+    /**
+     * Set the offline storage engine
+     * 
+     * @param {object} storageEngine the storage engine to use
+     */
+    extension.extendsGlobal.setOfflineStorageEngine = function (storageEngine) {
+        storage = storageEngine;
+    };
+
+    /**
+     * Sync strategy "always sync" : do sync before and after each operation
+     */
+    extension.extendsGlobal.SYNC_STRATEGY_ALWAYS = {
+        before: function(callback){
+            this.sync(callback) ;
+        },
+        after: function(callback){
+            this.sync(callback) ;
+        }
+    } ;
+    
+    /**
+     * Sync strategy manual : no automatic sync.
+     * You must manage sync in your code
+     */
+    extension.extendsGlobal.SYNC_STRATEGY_MANUAL = {
+        before: function(callback){ callback() ;},
+        after: function(callback){ callback() ;}
+    } ;
+    
+    /**
+     * Do a sync on first operation and each 20sec
+     */
+    extension.extendsGlobal.SYNC_STRATEGY_AUTO = {
+        before: function(callback){ 
+            if(!this.lastSyncDate || new Date().getTime() - this.lastSyncDate.getTime() > 20000){
+                //if not yet sync or sync more than 20s ago, sync again
+                if(this.syncAutoTimeoutId){
+                    //if there is a planned sync, cancel it
+                    clearTimeout(this.syncAutoTimeoutId) ;
+                    this.syncAutoTimeoutId = null;
+                }
+                this.sync(callback) ;
+            }else{
+                callback() ;
+            }
+        },
+        after: function(callback){
+            if(this.syncAutoTimeoutId){
+                //if there is a planned sync, cancel it
+                clearTimeout(this.syncAutoTimeoutId) ;
+            }
+            //schedule a sync in 20s (if no sync has been made in the midtime)
+            this.syncAutoTimeoutId = setTimeout(function(){
+                this.sync() ;
+            }.bind(this), 20000) ;
+            callback() ;
+        }
+    } ;
+
+    var syncStrategy = extension.extendsGlobal.SYNC_STRATEGY_AUTO ;
+
+
+    /**
+     * @typedef VeloxDbOfflineSyncStrategy
+     * @type {object}
+     * @property {function} before function receiving a callback that will be call before all db operation
+     * @property {function} after function receiving a callback that will be call after all db operation
+     */
+
+    /**
+     * Set the sync strategy (default is the SYNC_STRATEGY_AUTO)
+     * 
+     * You can use VeloxDatabaseClient.SYNC_STRATEGY_ALWAYS, VeloxDatabaseClient.SYNC_STRATEGY_MANUAL, VeloxDatabaseClient.SYNC_STRATEGY_AUTO
+     * 
+     * or you can create your own strategy
+     * 
+     * @param {VeloxDbOfflineSyncStrategy} syncStrategyP the strategy to use
+     */
+    extension.extendsGlobal.setSyncStrategy = function (syncStrategyP) {
+        syncStrategy = syncStrategyP;
+    };
 
     /**
      * init local storage
@@ -77,66 +161,77 @@
                     if (err) { return callback(err); }
                     storage.schema = schema;
                     localStorage.setItem(LOCAL_SCHEMA_KEY, JSON.stringify(schema));
+                    callback() ;
                 }.bind(this));
             }
         }.bind(this));
 
     }
 
+    function doOperation(instance, callbackDo, callbackDone){
+        prepare.bind(instance)(function (err) {
+            if (err) { return callbackDone(err); }
+            syncStrategy.before.bind(instance)(function(err){
+                if (err) { return callbackDone(err); }
+                callbackDo(function(err){
+                    if (err) { return callbackDone(err); }
+                    var results = Array.prototype.slice.call(arguments) ;
+                    syncStrategy.after.bind(instance)(function(err){
+                        if (err) { return callbackDone(err); }
+                        callbackDone.apply(null, results) ;
+                    }) ;
+                }) ;
+            }) ;
+        }) ;
+    }
+
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.insert = function (table, record, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
+        doOperation(this, function(done){
             saveOfflineChange([{ action: "insert", table: table, record: record }]);
-            storage.insert(table, record, callback);
-        }.bind(this));
+            storage.insert(table, record, done);
+        }, callback) ;
     };
 
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.update = function (table, record, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
+        doOperation(this, function(done){
             saveOfflineChange([{ action: "update", table: table, record: record }]);
-            storage.update(table, record, callback);
-        }.bind(this));
+            storage.update(table, record, done);
+        }, callback) ;
     };
 
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.remove = function (table, record, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
+        doOperation(this, function(done){
             saveOfflineChange([{ action: "remove", table: table, record: record }]);
-            storage.remove(table, record, callback);
-        }.bind(this));
+            storage.remove(table, record, done);
+        }, callback) ;
     };
 
     extension.extendsObj.transactionalChanges = function (changeSet, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
+        doOperation(this, function(done){
             saveOfflineChange(changeSet);
-            storage.transactionalChanges(changeSet, callback);
-        }.bind(this));
+            storage.transactionalChanges(changeSet, done);
+        }, callback) ;
     };
-
+    
     extension.extendsObj.getByPk = function (table, pkOrRecord, joinFetch, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
-            storage.getByPk(table, pkOrRecord, joinFetch, callback);
-        }.bind(this));
+        doOperation(this, function(done){
+            storage.getByPk(table, pkOrRecord, joinFetch, done);
+        }, callback) ;
     };
 
     extension.extendsObj.search = function (table, search, joinFetch, orderBy, offset, limit, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
-            storage.search(table, search, joinFetch, orderBy, offset, limit, callback);
-        }.bind(this));
+        doOperation(this, function(done){
+            storage.search(table, search, joinFetch, orderBy, offset, limit, done);
+        }, callback) ;
     };
 
     extension.extendsObj.searchFirst = function (table, search, joinFetch, orderBy, callback) {
-        prepare.bind(this)(function (err) {
-            if (err) { return callback(err); }
-            storage.searchFirst(table, joinFetch, search, orderBy, callback);
-        }.bind(this));
+        doOperation(this, function(done){
+            storage.searchFirst(table, joinFetch, search, orderBy, done);
+        }, callback) ;
     };
 
 
@@ -199,70 +294,75 @@
             callback = tables;
             tables = null;
         }
-
-        if (syncing) {
-            //already syncing, try later
-            setTimeout(function () {
-                this.sync(tables, callback);
-            }.bind(this), 200);
-            return;
+        if(!callback){
+            callback = function(){} ;
         }
+        prepare.bind(this)(function (err) {
+            if (err) { return callback(err); }
 
-        syncing = true;
-
-        uploadChanges.bind(this)(function (err) {
-            if (err) {
-                syncing = false;
-                return callback(err);
+            if (syncing) {
+                //already syncing, try later
+                setTimeout(function () {
+                    this.sync(tables, callback);
+                }.bind(this), 200);
+                return;
             }
-            //nothing to send to server anymore, sync new data from server
 
-            //first check if schema changed
-            syncSchema.bind(this)(function (err) {
-                if (err) { return callback(err); }
+            syncing = true;
 
-                //then check tables
-                var search = {};
-                if (tables) {
-                    search.table_name = tables;
+            uploadChanges.bind(this)(function (err) {
+                if (err) {
+                    syncing = false;
+                    return callback(err);
                 }
-                storage.search("velox_modif_table_version", search, function (err, localTablesVersions) {
-                    if (err) {
-                        syncing = false;
-                        return callback(err);
-                    }
+                //nothing to send to server anymore, sync new data from server
 
-                    this.constructor.prototype.search.bind(this)("velox_modif_table_version", search, function (err, distantTablesVersions) {
+                //first check if schema changed
+                syncSchema.bind(this)(function (err) {
+                    if (err) { return callback(err); }
+
+                    //then check tables
+                    var search = {};
+                    if (tables) {
+                        search.table_name = tables;
+                    }
+                    storage.search("velox_modif_table_version", search, function (err, localTablesVersions) {
                         if (err) {
                             syncing = false;
                             return callback(err);
                         }
 
-                        var localVersions = {};
-
-                        var tableToSync = localTablesVersions.filter(function (localTable) {
-                            localVersions[localTable.table_name] = localTable.version_table;
-                            var hasNewData = false;
-                            distantTablesVersions.some(function (distantTable) {
-                                if (distantTable.table_name === localTable.table_name) {
-                                    if (distantTable.version_table > localTable.version_table) {
-                                        hasNewData = true;
-                                    }
-                                    return true;
-                                }
-                            });
-                            return hasNewData;
-                        }).map(function(t){ return t.table_name; });
-
-                        tableToSync.push("velox_modif_table_version");
-
-                        syncTables.bind(this)(tableToSync, localVersions, function (err) {
+                        this.constructor.prototype.search.bind(this)("velox_modif_table_version", search, function (err, distantTablesVersions) {
                             if (err) {
                                 syncing = false;
                                 return callback(err);
                             }
-                            syncing = false;
-                            callback();
+
+                            var localVersions = {};
+                            localTablesVersions.forEach(function (localTable) {
+                                localVersions[localTable.table_name] = localTable.version_table;
+                            });
+
+
+                            var tableToSync = distantTablesVersions.filter(function (distantTable) {
+                                var localVersion = localVersions[distantTable.table_name] ;
+                                if(!localVersion){
+                                    localVersions[distantTable.table_name] = -1 ;
+                                }
+                                return (!localVersion || localVersion < distantTable.version_table) ;
+                            }).map(function(t){ return t.table_name; });
+
+                            tableToSync.push("velox_modif_table_version");
+
+                            syncTables.bind(this)(tableToSync, localVersions, function (err) {
+                                if (err) {
+                                    syncing = false;
+                                    return callback(err);
+                                }
+                                syncing = false;
+                                this.lastSyncDate = new Date() ;
+                                callback();
+                            }.bind(this));
                         }.bind(this));
                     }.bind(this));
                 }.bind(this));
@@ -271,7 +371,7 @@
     };
 
     function syncSchema(callback) {
-        this.searchFirst("velox_db_version", {}, function (err, localVersion) {
+        storage.searchFirst("velox_db_version", {}, function (err, localVersion) {
             if (err) { return callback(err); }
             this.constructor.prototype.searchFirst.bind(this)("velox_db_version", {}, function (err, distantVersion) {
                 if (err) { return callback(err); }
@@ -329,17 +429,7 @@
         }.bind(this));
     }
 
-    extension.extendsGlobal = {};
-
-    /**
-     * Set the offline storage engine
-     * 
-     * @param {object} storageEngine the storage engine to use
-     */
-    extension.extendsGlobal.setOfflineStorageEngine = function (storageEngine) {
-        storage = storageEngine;
-    };
-
+    
 
     var LOKIJS_VERSION = "1.5.0";
 
@@ -349,14 +439,14 @@
             type: "js",
             version: LOKIJS_VERSION,
             cdn: "https://cdnjs.cloudflare.com/ajax/libs/lokijs/$VERSION/lokijs.min.js",
-            bowerPath: "lokijs/lokijs.min.js"
+            bowerPath: "lokijs/build/lokijs.min.js"
         },
         {
             name: "lokijs-indexed-adapter",
             type: "js",
             version: LOKIJS_VERSION,
             cdn: "https://cdnjs.cloudflare.com/ajax/libs/lokijs/$VERSION/loki-indexed-adapter.min.js",
-            bowerPath: "lokijs/loki-indexed-adapter.min.js"
+            bowerPath: "lokijs/build/loki-indexed-adapter.min.js"
         }
     ];
 
@@ -476,6 +566,9 @@
     };
 
     VeloxDbOfflineLoki.prototype._doChanges = function (changeSet, results, callback) {
+        if (changeSet.length === 0) {
+            return callback(null, results);
+        } 
         var change = changeSet.shift();
         var next = function () {
             if (changeSet.length === 0) {
