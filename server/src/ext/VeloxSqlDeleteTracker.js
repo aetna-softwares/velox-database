@@ -139,7 +139,7 @@ class VeloxSqlDeleteTracker{
         if(backend === "pg"){
             return `
             CREATE TABLE IF NOT EXISTS velox_modif_table_version (
-                table_name VARCHAR(128),
+                table_name VARCHAR(128) PRIMARY KEY,
                 version_table bigint,
                 version_date timestamp without time zone
             )

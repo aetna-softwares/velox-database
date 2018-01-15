@@ -24,9 +24,12 @@ function extendsSchema(schemaBase, schemaExtends){
                     }
                 }) ;
             }
-            if(schemaExtends[table].pk){
-                schemaBase[table].pk = schemaExtends[table].pk ;
-            }
+            Object.keys(schemaExtends[table]).forEach(function(k){
+                if(!schemaBase[table][k] || (Array.isArray(schemaBase[table][k]) && schemaBase[table][k].length === 0 )) {
+                    schemaBase[table][k] = schemaExtends[table][k] ;
+                }
+            }) ;
+            
         }
     }) ;
 }
@@ -827,9 +830,11 @@ class VeloxDbPgClient {
         }) ;
     }
 
-    _prepareWhereCondition(columns, search, table){
+    _prepareWhereCondition(columns, search, table, params){
         let where = [];
-        let params = [] ;
+        if(!params){
+            params = [] ;
+        }
         for(let c of columns){
             if(search[c.name] !== undefined){
                 let value = search[c.name] ;
@@ -875,6 +880,28 @@ class VeloxDbPgClient {
                     }
                 }
             }
+        }
+        if(search.$or){
+            if(!Array.isArray(search.$or)){
+                throw "$or must be an array of sub predicate" ;
+            }
+            var subWheres = [] ;
+            for(let orPart of search.$or){
+                var subConditions = this._prepareWhereCondition(columns, orPart, table, params) ;
+                subWheres.push(subConditions.where.join(" AND ")) ;
+            }
+            where.push("("+subWheres.map((w)=>{ return "("+w+")" ;}).join(" OR ")+")") ;
+        }
+        if(search.$and){
+            if(!Array.isArray(search.$and)){
+                throw "$and must be an array of sub predicate" ;
+            }
+            var subWheres = [] ;
+            for(let andPart of search.$and){
+                var subConditions = this._prepareWhereCondition(columns, andPart, table, params) ;
+                subWheres.push(subConditions.where.join(" AND ")) ;
+            }
+            where.push("("+subWheres.map((w)=>{ return "("+w+")" ;}).join(" AND ")+")") ;
         }
         return {where: where, params: params};
     }
@@ -1131,9 +1158,19 @@ class VeloxDbPgClient {
                             }
 
                             extendsSchema(schema, this.schema) ;
-                            this.cache.schema = schema ;
 
-                            callback(null, schema) ;
+                            if(schema.velox_db_version){
+                                this._query("select * from velox_db_version", [], (err, results)=>{
+                                    if(err){ return callback(err); }
+                                    schema.__version = results.rows.length>0?results.rows[0]:{version: 0};
+                                    this.cache.schema = schema ;
+        
+                                    callback(null, schema) ;
+                                }) ;
+                            }else{
+                                callback(null, schema) ;
+                            }
+
                     }) ;
             }) ;
         }) ;
