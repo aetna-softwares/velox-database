@@ -463,7 +463,7 @@
                             if(tableDef.viewOfTables){
                                 tableDef.viewOfTables.forEach(function(subTable){
                                     if(tables.indexOf(subTable.name) === -1){
-                                        tables.push(subTable.name)
+                                        tables.push(subTable.name) ;
                                     }
                                 }) ;
                             }

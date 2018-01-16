@@ -646,215 +646,331 @@ class VeloxUserManagment{
                 return `(SELECT *, ${hiddenCols.map((c)=>{ return " NULL AS "+c ;}).join(',')} FROM ${sql} subH)` ;
             } ;
             for(let table of this.options.restrictedTables){
-                var insertMinProfileLevel = table.insertMinProfileLevel;
-                var updateMinProfileLevel = table.updateMinProfileLevel;
-                var removeMinProfileLevel = table.removeMinProfileLevel;
-                var readMinProfileLevel = table.readMinProfileLevel;
-                if(table.minProfileLevel){
-                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.minProfileLevel:insertMinProfileLevel;
-                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.minProfileLevel:updateMinProfileLevel;
-                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.minProfileLevel:removeMinProfileLevel;
-                }
-                if(table.allMinProfileLevel){
-                    insertMinProfileLevel = insertMinProfileLevel === undefined?table.allMinProfileLevel:insertMinProfileLevel;
-                    updateMinProfileLevel = updateMinProfileLevel === undefined?table.allMinProfileLevel:updateMinProfileLevel;
-                    removeMinProfileLevel = removeMinProfileLevel === undefined?table.allMinProfileLevel:removeMinProfileLevel;
-                    readMinProfileLevel = readMinProfileLevel === undefined?table.allMinProfileLevel:readMinProfileLevel;
-                }
 
-
-                if(table.readCondition){
-                    //restrict on arbitrary where condition
-                    this.extendsClient["getTable_"+table.name] = function(){
-                        return handleHiddenColumns.bind(this)(function(){
-                            var client = this ; //this is the db client
-                            if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
-                                return `
-                                    (SELECT *
-                                    FROM
-                                    ${table.name} 
-                                    WHERE ${table.readCondition.replace(/\$user_uid/g, "'"+client.context.req.user.uid+"'")} )
-                                `;
-                            }else{
-                                return table.name ;
-                            }
-                        }, table.hiddenCols) ;
-                    };
-                }else if(table.realmCol){
-                    //restrict on records linked to user realm
-                    this.extendsClient["getTable_"+table.name] = function(){
-                        return handleHiddenColumns.bind(this)(function(){
-                            var client = this ; //this is the db client
-                            if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
-                                if(readMinProfileLevel){
-                                    //restrict on all allowed realm with sufficient permission
-                                    return `
-                                        (SELECT DISTINCT t.*
-                                        FROM
-                                        ${table.name} t
-                                        JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
-                                        JOIN velox_user_profile p ON r.profile_code = p.code
-                                        WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level <= ${readMinProfileLevel})
-                                    `;
-                                }else{
-                                    //restrict only on all allowed realm
-                                    return `
-                                        (SELECT DISTINCT t.*
-                                        FROM
-                                        ${table.name} t
-                                        JOIN velox_link_user_realm r ON t.${table.realmCol} = r.realm_code
-                                        WHERE r.user_uid = '${client.context.req.user.uid}')
-                                    `;
-                                }
-                            }else{
-                                return table.name ;
-                            }
-                        }, table.hiddenCols) ;
-                    } ;
-                } else if (table.userCol){
-                    //restrict on records linked to user
-                    this.extendsClient["getTable_"+table.name] = function(){
-                        return handleHiddenColumns.bind(this)(function(){
-                            var client = this ; //this is the db client
-                            if(!client.disableRestriction && client.context && client.context.req && client.context.req.user){
-                                return `
-                                    (SELECT DISTINCT t.*
-                                    FROM
-                                    ${table.name} t
-                                    WHERE ${table.userCol} = '${client.context.req.user.uid}')
-                                `;
-                            }else{
-                                return table.name ;
-                            }
-                        }, table.hiddenCols)  ;
-                    };
-                } else if (table.hidden){
-                    //hide all records
-                    this.extendsClient["getTable_"+table.name] = function(){
+                //override the gettable to give a restricted view according to read restriction
+                this.extendsClient["getTable_"+table.name] = function(){
+                    return handleHiddenColumns.bind(this)(function(){
                         var client = this ; //this is the db client
-                        if(!client.disableRestriction){
+
+                        if(client.disableRestriction){ return table.name ;} //restriction disabled
+
+                        if(!client.context || !client.context.req || !client.context.req.user ){ return table.name ;} //no user context
+
+                        if(table.hidden){
+                            //the table is always hidden, return empty table
                             return `
                                 (SELECT DISTINCT t.*
                                 FROM
                                 ${table.name} t
                                 WHERE 0 = 1)
                             `;
-                        }else{
-                            return table.name ;
                         }
-                    } ;
-                }
-                
-                if(insertMinProfileLevel || updateMinProfileLevel || removeMinProfileLevel){
-                    //action restriction on profile level
-                    var createRestrictFunction = function(table, minLevel, action){
-                        return function(tableName, record, callback){
-                            if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
-                                if(action === "insert"){
-                                    if(!record[table.realmCol] && this.context && this.context.req && this.context.req.currentRealm){
-                                        record[table.realmCol] = this.context.req.currentRealm;
+
+
+                        let user = client.context.req.user ;
+                        let tableFrom = table.name ;
+
+                        if(table.readCondition){
+                            //restrict on arbitrary where condition
+                            tableFrom = `
+                                (SELECT *
+                                FROM
+                                ${table.name} 
+                                WHERE ${table.readCondition.replace(/\$user_uid/g, "'"+client.context.req.user.uid+"'")} )
+                            ` ;
+                        }
+
+                        if(table.rules){
+                            var profileLevel = user.profile ? user.profile.level : null;
+
+                            if(profileLevel !== undefined && profileLevel !== null){
+                                //This use has a global profile level
+
+                                //check if a rule grant a read access without realm restriction
+                                let hasFullReadAccess = false;
+                                for(let rule of table.rules){
+                                    if(rule.rights.indexOf("read") !== -1 && !rule.realmRestrict 
+                                        && (rule.profile === profileLevel || ( rule.profile.indexOf && rule.profile.indexOf(profileLevel) !== -1 ) )){
+                                            hasFullReadAccess = true ; 
+                                            break ;
                                     }
                                 }
 
-                                //check current user is allowed on this realm
-                                this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid},[{otherTable: "velox_user_profile", name: "profile"}], (err, currentUserRealms)=>{
-                                    if(err){ return callback(err) ;}
-                                    let thisRealmLines = currentUserRealms;
-                                    if(table.realmCol){
-                                        thisRealmLines = [];
-                                        currentUserRealms.forEach((r)=>{
-                                            if(r.realm_code === record[table.realmCol]){
-                                                thisRealmLines.push(r) ;
-                                            }
-                                        }) ;
+                                if(hasFullReadAccess){
+                                    return tableFrom ; //full read access, give back normal table
+                                }
+                            }
+
+                            //no full read access granted to this user, get available rules
+                            for(let rule of table.rules){
+                                let authorizedLevelsOnRealm = [] ;
+                                if(rule.rights.indexOf("read") !== -1 && rule.realmRestrict){
+                                    if(Array.isArray(rule.profile)){
+                                        authorizedLevelsOnRealm = authorizedLevelsOnRealm.concat(rule.profile) ;
+                                    }else{
+                                        authorizedLevelsOnRealm.push(rule.profile) ;
+                                    }
+                                }
+                                if(authorizedLevelsOnRealm.length === 0){
+                                    //no authorization rule on realm, look for user
+                                    let authorizedLevelsOnUser = [] ;
+                                    if(rule.rights.indexOf("read") !== -1 && rule.userRestrict){
+                                        if(Array.isArray(rule.profile)){
+                                            authorizedLevelsOnUser = authorizedLevelsOnUser.concat(rule.profile) ;
+                                        }else{
+                                            authorizedLevelsOnUser.push(rule.profile) ;
+                                        }
                                     }
                                     
-                                    if(thisRealmLines.length === 0){
-                                        return callback("You are not allowed for "+table.name+" (no realm line)") ;
-                                    }
-    
-                                    let profileOk = thisRealmLines.some((r)=>{
-                                        return r.profile.level <= minLevel ;
-                                    });
-                                    if(profileOk){
-                                        callback();
+                                    if(authorizedLevelsOnUser.length === 0){
+                                        //no authorization on user neither, give back fake empty table
+                                        return ` (SELECT t.* FROM ${table.name} t WHERE 0 = 1) ` ;
                                     }else{
-                                        callback("You are not allowed for "+table.name+" (profile not enough)") ;
+                                        //create a sub query restricted on user for authorized level
+                                        var userColPath = table.userCol.split(".") ;
+                                        var from = `FROM ${table.name}` ;
+                                        var currentTable = table.name ;
+                                        userColPath.forEach((p, i)=>{
+                                            if(i === userColPath.length-1){
+                                                from += ` JOIN velox_user u ON ${currentTable}.${p} = u.uid
+                                                JOIN velox_user_profile p ON u.profile_code = p.code
+                                                 ` ;
+                                            }else{
+                                                from += ` JOIN ${p} `+createJoinOnFromFk(client.cache.schema, currentTable, p) ;
+                                                currentTable = p ;
+                                            }
+                                        }) ;
+
+                                        return `(SELECT DISTINCT ${table.name}.*
+                                            FROM
+                                            ${from} 
+                                            WHERE u.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                        )`;
                                     }
-                                }) ;
-                            }else{
-                                callback() ;
-                            }
-                        } ;
-                    };
-                    if(insertMinProfileLevel !== undefined){
-                        this.interceptClientQueries.push(
-                            {name : "insert", table: table.name, before : createRestrictFunction(table, insertMinProfileLevel, "insert") }
-                        );
-                    }
-                    if(updateMinProfileLevel !== undefined){
-                        this.interceptClientQueries.push(
-                            {name : "update", table: table.name, before : createRestrictFunction(table, updateMinProfileLevel, "update") }
-                        );
-                    }
-                    if(removeMinProfileLevel !== undefined){
-                        this.interceptClientQueries.push(
-                            {name : "remove", table: table.name, before : createRestrictFunction(table, removeMinProfileLevel, "remove") }
-                        );
-                    }
-                } else if(table.realmCol){
-                    //no restriction on level, add restriction on realm record
-                    let realmRestrict = function(tableName, record, callback){
-                        if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
-                            //check current user is allowed on this realm
-                            this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid},[{otherTable: "velox_user_profile", name: "profile"}], (err, currentUserRealms)=>{
-                                if(err){ return callback(err) ;}
-                                let thisRealmLines = currentUserRealms;
-                                if(table.realmCol){
-                                    thisRealmLines = [];
-                                    currentUserRealms.forEach((r)=>{
-                                        if(r.realm_code === record[table.realmCol]){
-                                            thisRealmLines.push(r) ;
+                                }else{
+                                    //create a sub query restricted on realm for authorized level
+                                    var realmColPath = table.realmCol.split(".") ;
+                                    var from = `FROM ${table.name}` ;
+                                    var currentTable = table.name ;
+                                    realmColPath.forEach((p, i)=>{
+                                        if(i === realmColPath.length-1){
+                                            from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
+                                            JOIN velox_user_profile p ON r.profile_code = p.code
+                                            ` ;
+                                        }else{
+                                            from += ` JOIN ${p} `+createJoinOnFromFk(client.cache.schema, currentTable, p) ;
+                                            currentTable = p ;
                                         }
                                     }) ;
-                                }
-                                
-                                if(thisRealmLines.length === 0){
-                                    return callback("You are not allowed for "+tableName+" (no realm)") ;
+                                    return `
+                                        (SELECT DISTINCT ${table.name}.*
+                                        ${from} 
+                                        
+                                        WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")}))
+                                    `;
                                 }
 
-                                callback();
-                            }) ;
+                            }
+
                         }else{
-                            callback() ;
+                            //no restriction rules
+                            return tableFrom ;
                         }
-                    } ;
-                    this.interceptClientQueries.push( {name : "insert", table: table.name, before : realmRestrict } );
-                    this.interceptClientQueries.push( {name : "update", table: table.name, before : realmRestrict } );
-                    this.interceptClientQueries.push( {name : "remove", table: table.name, before : realmRestrict } );
-                } else if(table.userCol){
-                    //no restriction on profile or realm, add restriction on user records
-                    let userRestrict = function(tableName, record, callback){
+                    }, table.hiddenCols) ;
+                };
+
+                var createRestrictFunction = function(table, action){
+                    return function(tableName, record, callback){
                         if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
-                            //check current user is allowed on this record
-                            if(!record[table.userCol]){
-                                record[table.userCol] = this.context.req.user.uid;
+
+                            let user = this.context.req.user ;
+                            let currentRealm = this.context.req.currentRealm ;
+
+                            if(action === "insert"){
+                                //on insert, force the realm and user col if any
+                                if(currentRealm && table.realmCol && table.realmCol.indexOf(".") === -1 && !record[table.realmCol]){
+                                    record[table.realmCol] = currentRealm;
+                                }
+                                if(table.userCol && table.userCol.indexOf(".") === -1 && record[table.userCol]){
+                                    record[table.userCol] = user.uid;
+                                }
                             }
-                            if(this.context.req.user.uid !== record[table.userCol]){
-                                return callback("You are not allowed for "+tableName+" (user not allowed for this record)") ;
+
+                            if(table.rules){
+                                var profileLevel = user.profile ? user.profile.level : null;
+    
+                                if(profileLevel !== undefined && profileLevel !== null){
+                                    //This user has a global profile level
+    
+                                    //check if a rule grant an access without realm restriction
+                                    let hasFullReadAccess = false;
+                                    for(let rule of table.rules){
+                                        if(rule.rights.indexOf(action) !== -1 && !rule.realmRestrict 
+                                            && (rule.profile === profileLevel || ( rule.profile.indexOf && rule.profile.indexOf(profileLevel) !== -1 ) )){
+                                                hasFullReadAccess = true ; 
+                                                break ;
+                                        }
+                                    }
+    
+                                    if(hasFullReadAccess){
+                                        return callback() ; //full access OK
+                                    }
+                                }
+    
+                                //no full access granted to this user, get available rules
+                                for(let rule of table.rules){
+                                    let authorizedLevelsOnRealm = [] ;
+                                    if(rule.rights.indexOf(action) !== -1 && rule.realmRestrict){
+                                        if(Array.isArray(rule.profile)){
+                                            authorizedLevelsOnRealm = authorizedLevelsOnRealm.concat(rule.profile) ;
+                                        }else{
+                                            authorizedLevelsOnRealm.push(rule.profile) ;
+                                        }
+                                    }
+                                    if(authorizedLevelsOnRealm.length === 0){
+                                        //no authorization rule on realm, look for user
+                                        let authorizedLevelsOnUser = [] ;
+                                        if(rule.rights.indexOf(action) !== -1 && rule.userRestrict){
+                                            if(Array.isArray(rule.profile)){
+                                                authorizedLevelsOnUser = authorizedLevelsOnUser.concat(rule.profile) ;
+                                            }else{
+                                                authorizedLevelsOnUser.push(rule.profile) ;
+                                            }
+                                        }
+                                        
+                                        if(authorizedLevelsOnUser.length === 0){
+                                            //no authorization on user neither, give back fake empty table
+                                            return callback("No rule for "+action+" permitted to "+table.name) ;
+                                        }else{
+                                            //check if given user is correct on record
+                                            var userColPath = table.userCol.split(".") ;
+
+                                            if(userColPath.length === 1){
+                                                if(record[table.userCol] !== user.uid){
+                                                    return callback("You're not allowed to set user "+record[table.userCol]+" in table "+table.name) ;
+                                                }
+                                                if(authorizedLevelsOnUser.indexOf(profileLevel) === -1){
+                                                    return callback("You're not allowed for action "+action+" on table "+table.name) ;
+                                                }
+                                            }else if(userColPath.length > 1){
+                                                //search uid on related table
+
+                                                var currentTable = userColPath[0] ;
+                                                var from = `FROM ${currentTable}` ;
+                                                userColPath.forEach((p, i)=>{
+                                                    if(i === userColPath.length-1){
+                                                        from += ` JOIN velox_user u ON ${currentTable}.${p} = u.uid
+                                                        JOIN velox_user_profile p ON u.profile_code = p.code
+                                                         ` ;
+                                                    }else if(i>0){
+                                                        from += ` JOIN ${p} `+createJoinOnFromFk(this.cache.schema, currentTable, p) ;
+                                                        currentTable = p ;
+                                                    }
+                                                }) ;
+
+                                                let params = [] ;
+                                                let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, userColPath[0]) ;
+                                                let where = Object.keys(whereCols).map((thisCol)=>{
+                                                    params.push(record[thisCol]) ;
+                                                    return userColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                                }).join(" AND ") ;
+
+                                                var sql = `(SELECT 1
+                                                    FROM
+                                                    ${from} 
+                                                    WHERE u.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                                    AND ${where}
+                                                )`;
+                                                this.unsafe((txUnsafe, done)=>{
+                                                    txUnsafe._query(sql, params, done) ;
+                                                }, (err, results)=>{
+                                                    if(err){ return callback(err) ;}
+                                                    if(results.rows.length === 0){
+                                                        return callback("You're not allowed for action "+action+" on table "+table.name) ;
+                                                    } else {
+                                                        return callback(); //OK
+                                                    }
+                                                }) ;
+                                            }
+                                        }
+                                    }else{
+                                        //check if realm is authorized
+                                        var realmColPath = table.realmCol.split(".") ;
+
+                                        if(realmColPath.length === 1){
+                                            if(record[table.realmCol] !== currentRealm){
+                                                return callback("You're not allowed to set realm "+record[table.realmCol]+" in table "+table.name) ;
+                                            }
+                                            if(authorizedLevelsOnRealm.indexOf(profileLevel) === -1){
+                                                return callback("You're not allowed for action "+action+" on table "+table.name) ;
+                                            }
+                                        }else if(realmColPath.length > 1){
+                                            //search realm on related table
+
+                                            var currentTable = realmColPath[0] ;
+                                            var from = `FROM ${currentTable}` ;
+                                            realmColPath.forEach((p, i)=>{
+                                                if(i === realmColPath.length-1){
+                                                     from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
+                                                    JOIN velox_user_profile p ON r.profile_code = p.code
+                                                    ` ;
+                                                }else if(i>0){
+                                                    from += ` JOIN ${p} `+createJoinOnFromFk(this.cache.schema, currentTable, p) ;
+                                                    currentTable = p ;
+                                                }
+                                            }) ;
+
+                                            let params = [] ;
+                                            let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
+                                            let where = Object.keys(whereCols).map((thisCol)=>{
+                                                params.push(record[thisCol]) ;
+                                                return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                            }).join(" AND ") ;
+
+                                            var sql = `(SELECT 1
+                                                FROM
+                                                ${from} 
+                                                WHERE r.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                                AND ${where}
+                                            )`;
+                                            this.unsafe((txUnsafe, done)=>{
+                                                txUnsafe._query(sql, params, done) ;
+                                            }, (err, results)=>{
+                                                if(err){ return callback(err) ;}
+                                                if(results.rows.length === 0){
+                                                    return callback("You're not allowed for action "+action+" on table "+table.name) ;
+                                                } else {
+                                                    return callback(); //OK
+                                                }
+                                            }) ;
+                                        }
+                                    }    
+                                }
+                            }else{
+                                //no restriction rules
+                                return callback() ;
                             }
-                            callback();
-                        }else{
+                        } else {
                             callback() ;
                         }
                     } ;
-                    this.interceptClientQueries.push( {name : "insert", table: table.name, before : userRestrict } );
-                    this.interceptClientQueries.push( {name : "update", table: table.name, before : userRestrict } );
-                    this.interceptClientQueries.push( {name : "remove", table: table.name, before : userRestrict } );
-                }
+                };
+                
+                this.interceptClientQueries.push(
+                    {name : "insert", table: table.name, before : createRestrictFunction(table, "insert") }
+                );
+                this.interceptClientQueries.push(
+                    {name : "update", table: table.name, before : createRestrictFunction(table, "update") }
+                );
+                    
+                this.interceptClientQueries.push(
+                    {name : "remove", table: table.name, before : createRestrictFunction(table, "remove") }
+                );
             }
         }
     }
+
+    
 
     /**
      * Check if the current user can interract with this user
@@ -1441,6 +1557,50 @@ class VeloxUserManagment{
         throw "not implemented for backend "+backend ;
     }
     
+}
+
+/**
+ * Create the JOIN "ON" condition between 2 table using FK definitions
+ * 
+ * @param {object} schema the database schema
+ * @param {string} thisTable starting table name
+ * @param {string} otherTable destination table name
+ */
+function createJoinOnFromFk(schema, thisTable, otherTable){
+    let pairs = getJoinPairsFromFk(schema, thisTable, otherTable) ;
+
+    if(Object.keys(pairs).length === 0){
+        throw "Can't create JOIN condition between "+thisTable+" and "+otherTable+", can't find suitable foreign key to do so" ;
+    }
+    return " ON "+Object.keys(pairs).map((left)=>{ return thisTable+"."+left+" = "+otherTable+"."+pairs[left] ;}).join(" AND ") ;
+}
+
+/**
+ * Get the JOIN "ON" pairs
+ * 
+ * @param {object} schema the database schema
+ * @param {string} thisTable starting table name
+ * @param {string} otherTable destination table name
+ */
+function getJoinPairsFromFk(schema, thisTable, otherTable){
+    let pairs = {} ;
+
+    //look in this table FK
+    for(let fk of schema[thisTable].fk){
+        if(fk.targetTable === otherTable){
+            pairs[fk.thisColumn] = fk.targetColumn ;
+        }
+    }
+
+    if(Object.keys(pairs).length === 0){
+        //look in other table FK
+        for(let fk of schema[otherTable].fk){
+            if(fk.targetTable === thisTable){
+                pairs[fk.targetColumn] = fk.thisColumn ;
+            }
+        }
+    }
+    return pairs ;
 }
 
 module.exports = VeloxUserManagment;

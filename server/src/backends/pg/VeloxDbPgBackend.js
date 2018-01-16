@@ -214,7 +214,7 @@ class VeloxDbPgClient {
         aliases.main = "t" ;
         if(joinFetch){
             for(let join of joinFetch){
-                this._addFromJoin(join, schema, select, from, aliases, table)
+                this._addFromJoin(join, schema, select, from, aliases, table) ;
             }
         }
         return {
