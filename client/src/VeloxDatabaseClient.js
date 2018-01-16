@@ -35,7 +35,18 @@
             //add trailing slash
             this.dbEntryPoint = this.dbEntryPoint+"/" ;
         }
-        client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){
+
+        //add extension features
+        VeloxDatabaseClient.extensions.forEach(function(extension){
+            if(extension.extendsObj){
+                Object.keys(extension.extendsObj).forEach(function (key) {
+                        this[key] = extension.extendsObj[key].bind(this);
+                }.bind(this));
+            }
+        }.bind(this));
+
+        this.getSchema(function(err, schema){
+        //client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){
             if(err){ 
                 if(err == "401"){
                     err = "Access to schema required login, you should set /"+this.dbEntryPoint+"schema as public resources" ; 
@@ -97,25 +108,6 @@
                 this.getSchema( callback) ;
             }.bind(this) ;
 
-            //add extension features
-            VeloxDatabaseClient.extensions.forEach(function(extension){
-                if(extension.extendsObj){
-                    Object.keys(extension.extendsObj).forEach(function (key) {
-                            this[key] = extension.extendsObj[key].bind(this);
-                    }.bind(this));
-                }
-            }.bind(this));
-            // VeloxDatabaseClient.extensions.forEach(function(extension){
-            //     if (extension.extendsProto) {
-            //         Object.keys(extension.extendsProto).forEach(function (key) {
-            //             dbApi[key] = extension.extendsProto[key]
-            //             dbApi.getSchema = function(){
-            //                 var args = Array.prototype.slice.call(arguments) ;
-            //                 this[key].apply(this, args) ;
-            //             }.bind(this) ;
-            //         }.bind(this));
-            //     }
-            // }.bind(this));
 
             callback() ;
         }.bind(this)) ;

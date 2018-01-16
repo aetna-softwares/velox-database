@@ -72,10 +72,16 @@
      */
     extension.extendsGlobal.SYNC_STRATEGY_ALWAYS = {
         before: function(callback){
-            this.sync(callback) ;
+            this.sync(function(err){
+                if(err){ console.info("Sync failed, assume offline", err); }
+                callback() ;
+            }) ;
         },
         after: function(callback){
-            this.sync(callback) ;
+            this.sync(function(err){
+                if(err){ console.info("Sync failed, assume offline", err); }
+                callback() ;
+            }) ;
         }
     } ;
     
@@ -100,7 +106,10 @@
                     clearTimeout(this.syncAutoTimeoutId) ;
                     this.syncAutoTimeoutId = null;
                 }
-                this.sync(callback) ;
+                this.sync(function(err){
+                    if(err){ console.info("Sync failed, assume offline", err); }
+                    callback() ;
+                }) ;
             }else{
                 callback() ;
             }
@@ -157,7 +166,6 @@
         tableSettings = settings;
     };
 
-
     var prepareDone = false;
     /**
      * init local storage
@@ -169,22 +177,7 @@
             return callback() ;
         }
 
-        var getSchema = function(callback){
-            var schema = localStorage.getItem(LOCAL_SCHEMA_KEY);
-            if (schema) {
-                schema = JSON.parse(schema);
-                callback(null, schema);
-            } else {
-                //no local schema, get from server
-                this.constructor.prototype.getSchema.bind(this)(function (err, schema) {
-                    if (err) { return callback(err); }
-                    localStorage.setItem(LOCAL_SCHEMA_KEY, JSON.stringify(schema));
-                    callback(null, schema) ;
-                }.bind(this));
-            }
-        }.bind(this) ;
-        
-        getSchema(function(err, schema){
+        this.getSchema(function(err, schema){
             if (err) { return callback(err); }
 
             if (!storage) {
@@ -203,16 +196,31 @@
 
     }
 
-    function isOffline(tableName){
+    function isOffline(tableName, action){
+        if(Array.isArray(tableName)){
+            //transaction changes list
+            return tableName.every(function(change){
+                if(change.action){
+                    return isOffline(change.table, change.action) ;
+                }else{
+                    //action auto, need insert/getByPk/update
+                    return isOffline(change.table, "insert") && isOffline(change.table, "read")  && isOffline(change.table, "update");
+                }
+            }) ;
+        }
         if(tableSettings){
-            var isOffline = false;
+            var isOfflineTable = false;
             tableSettings.some(function(table){
                 if(table.name === tableName){
-                    isOffline = table.offline ;
+                    if(Array.isArray(table.offline)){
+                        isOfflineTable = action === "any" || table.offline.indexOf(action) !== -1 ;
+                    }else{
+                        isOfflineTable = table.offline ;
+                    }
                     return true ;
                 }
             }) ;
-            return isOffline ;
+            return isOfflineTable ;
         }else{
             return true ;
         }
@@ -220,12 +228,13 @@
 
     function doOperation(instance, action, args, callbackDo, callbackDone){
         if(action !== "multiread"){
-            if(!isOffline(args[0])){
+            var ope = "read" ;
+            if(action === "insert"){ ope = "insert" ;}
+            if(action === "update"){ ope = "update" ;}
+            if(!isOffline(args[0], ope)){
                 return instance.constructor.prototype[action].apply(instance, args) ;
             }
         }
-
-
         prepare.bind(instance)(function (err) {
             if (err) { return callbackDone(err); }
             syncStrategy.before.bind(instance)(function(err){
@@ -241,6 +250,21 @@
             }) ;
         }) ;
     }
+
+    extension.extendsObj.getSchema = function(callback){
+        var schema = localStorage.getItem(LOCAL_SCHEMA_KEY);
+        if (schema) {
+            schema = JSON.parse(schema);
+            callback(null, schema);
+        } else {
+            //no local schema, get from server
+            this.constructor.prototype.getSchema.bind(this)(function (err, schema) {
+                if (err) { return callback(err); }
+                localStorage.setItem(LOCAL_SCHEMA_KEY, JSON.stringify(schema));
+                callback(null, schema) ;
+            }.bind(this));
+        }
+    } ;
 
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.insert = function (table, record, callback) {
@@ -322,7 +346,7 @@
             storage.multiread(offlineReads, function(err, results){
                 if(err){ return done(err) ;}
                 if(Object.keys(onlineReads).length>0){
-                    this.constructor.prototype.multiread.apply(this, onlineReads, function(err, onlineResults){
+                    this.constructor.prototype.multiread.bind(this)(onlineReads, function(err, onlineResults){
                         if(err){ return done(err) ;}
                         Object.keys(onlineResults).forEach(function(k){
                             results[k] = onlineResults[k] ;
@@ -346,17 +370,17 @@
         }
         var start = new Date(new Date().getTime()+lapse);
         
-        this._ajax(this.options.serverUrl + "syncGetTime", "POST", start, function (err, lapseServer) {
+        this.client.ajax("syncGetTime", "POST", {date: start}, function (err, lapseServer) {
             if(err){ return callback(err);}
 
             if(Math.abs(lapseServer) < 500){
                 //accept a 500ms difference, the purpose is to distinguish who from 2 offline users did modif the first
                 //it is acceptable to mistake by a second
-                return callback(lapse) ;
+                return callback(null, lapse) ;
             }
 
             calculateTimeLapse.bind(this)(lapse+lapseServer, tries, callback) ;
-        }) ;
+        }.bind(this)) ;
     } ;
 
     var uploadChanges = function (callback) {
@@ -366,7 +390,7 @@
             calculateTimeLapse.bind(this)(0, 0, function(err, lapse){
                 if(err){ return callback(err) ;}
                 localChanges[0].timeLapse = lapse ;
-                this._ajax(this.options.serverUrl + "sync", "POST", localChanges[0], function (err) {
+                this.client.ajax("sync", "POST", {changes: localChanges[0]}, "json", function (err) {
                     if (err) {
                         return callback(err);
                     }
@@ -420,7 +444,10 @@
 
                 //first check if schema changed
                 syncSchema.bind(this)(function (err) {
-                    if (err) { return callback(err); }
+                    if (err) { 
+                        syncing = false;
+                        return callback(err); 
+                    }
 
                     //then check tables
                     var search = {};
@@ -655,7 +682,7 @@
             var db = event.target.result;
     
             Object.keys(this.schema).forEach(function(table){
-                if ((isOffline(table) || table === "velox_modif_table_version" || table === "velox_db_version") && !db.objectStoreNames.contains(table)) {
+                if ((isOffline(table, "any") || table === "velox_modif_table_version" || table === "velox_db_version") && !db.objectStoreNames.contains(table)) {
                     var options = {} ;
                     if(this.schema[table].pk && this.schema[table].pk.length>0){
                         options.keyPath =this.schema[table].pk ;
@@ -710,7 +737,6 @@
                 return ;
             }
             results = arguments[1] ;
-            callback(null, results) ;
         }) ;
 
     };
@@ -871,6 +897,7 @@
                         tx.getByPk(read.table, read.getByPk, read.joinFetch, function(err, res){
                             if(err){ return reject(err) ;}
                             results[read.name] = res ;
+                            console.log("getByPk "+read.name) ;
                             resolve() ;
                         });
                     })) ;
@@ -879,20 +906,23 @@
                         tx.search(read.table, read.search, read.joinFetch, read.orderBy, read.offset, read.limit, function(err, res){
                             if(err){ return reject(err) ;}
                             results[read.name] = res ;
+                            console.log("search "+read.name) ;
                             resolve() ;
                         });
                     })) ;
                 }else if(read.searchFirst){
-                    tx.push(new Promise(function(resolve, reject){
-                        storage.searchFirst(read.table, read.searchFirst, read.joinFetch, read.orderBy, function(err, res){
+                    readPromises.push(new Promise(function(resolve, reject){
+                        tx.searchFirst(read.table, read.searchFirst, read.joinFetch, read.orderBy, 0, 1, function(err, res){
                             if(err){ return reject(err) ;}
-                            results[read.name] = res ;
+                            results[read.name] = res.length>0?res[0]:null ;
+                            console.log("searchFirst "+read.name) ;
                             resolve() ;
                         });
                     })) ;
                 }
             }) ;
             Promise.all(readPromises).then(function(){
+                console.log("multiread done") ;
                 done(null, results) ;
             }).catch(function(err){
                 done(err) ;
@@ -900,7 +930,6 @@
         }, callback);
     };
 
-   
 
     /**
      * Create a new transaction
@@ -913,6 +942,7 @@
         this.tables = tables;
         this.mode = mode||"readwrite";
         this.tx = db.db.transaction(tables, mode);
+        console.log("transaction start") ;
         this.tx.onerror = function(){
             console.log("transaction error", this.tx.error) ;
             callbackFinished(this.tx.error) ;
@@ -922,6 +952,7 @@
             callbackFinished(this.tx.error) ;
         }.bind(this) ;
         this.tx.oncomplete = function() {
+            console.log("transaction done") ;
             callbackFinished() ;
         };
     }
