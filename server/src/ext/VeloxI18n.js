@@ -285,7 +285,7 @@ class VeloxI18n{
     translateOne(table, record, callback){
         var lang = "base" ;
 
-        if(this.context && this.context.req){
+        if(record && this.context && this.context.req){
             if(this.context.req.lang){
                 lang = this.context.req.lang ;
             } else if(this.context.req.user && this.context.req.user.lang){
