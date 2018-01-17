@@ -1,5 +1,3 @@
-const uuid = require("uuid") ;
-
 let cacheTranslations = null;
 
 /**

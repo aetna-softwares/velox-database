@@ -820,8 +820,29 @@
         }
     };
 
+    VeloxDbOfflineIndDb.prototype.getJoinTables = function(joinFetch){
+        var tables = [] ;
+        joinFetch.forEach(function(j){
+            if(tables.indexOf(j.otherTable) === -1){
+                tables.push(j.otherTable) ;
+            }
+            if(j.joins){
+                this.getJoinTables(j.joins) ;
+            }
+        }.bind(this)) ;
+        return tables;
+    } ;
+
     VeloxDbOfflineIndDb.prototype.getByPk = function (table, pkOrRecord, joinFetch, callback) {
-        this.tx([table], "readonly", function(tx, done){
+        if(typeof(joinFetch) === "function"){
+            callback = joinFetch ;
+            joinFetch = null;
+        }
+        var tables = [table] ;
+        if(joinFetch){
+            tables = tables.concat(this.getJoinTables(joinFetch)) ;
+        }
+        this.tx(tables, "readonly", function(tx, done){
             tx.getByPk(table, pkOrRecord, joinFetch, done) ;
         }, callback) ;
     };
@@ -855,7 +876,12 @@
             limit = null;
         }
 
-        this.tx([table], "readonly", function(tx, done){
+        var tables = [table] ;
+        if(joinFetch){
+            tables = tables.concat(this.getJoinTables(joinFetch)) ;
+        }
+
+        this.tx(tables, "readonly", function(tx, done){
             tx.search(table, search, joinFetch, orderBy, offset, limit, done) ;
         }, callback) ;
     };
@@ -876,7 +902,7 @@
             callback = orderBy;
             orderBy = null;
         }
-        this.search(table, search, orderBy, 0, 1, function (err, results) {
+        this.search(table, search, joinFetch, orderBy, 0, 1, function (err, results) {
             if (err) { return callback(err); }
             if (results.length === 0) {
                 callback(null, null);
@@ -888,6 +914,12 @@
     };
 
     VeloxDbOfflineIndDb.prototype.multiread = function (reads, callback) {
+        var tables = reads.map(function(r){return r.table;}) ;
+        reads.forEach(function(read){
+            if(read.joinFetch){
+                tables = tables.concat(this.getJoinTables(read.joinFetch)) ;
+            }
+        }.bind(this)) ;
         this.tx(reads.map(function(r){return r.table;}), "readonly", function(tx, done){
             var results = {} ;
             var readPromises = [] ;
@@ -897,7 +929,6 @@
                         tx.getByPk(read.table, read.getByPk, read.joinFetch, function(err, res){
                             if(err){ return reject(err) ;}
                             results[read.name] = res ;
-                            console.log("getByPk "+read.name) ;
                             resolve() ;
                         });
                     })) ;
@@ -906,7 +937,6 @@
                         tx.search(read.table, read.search, read.joinFetch, read.orderBy, read.offset, read.limit, function(err, res){
                             if(err){ return reject(err) ;}
                             results[read.name] = res ;
-                            console.log("search "+read.name) ;
                             resolve() ;
                         });
                     })) ;
@@ -915,7 +945,6 @@
                         tx.searchFirst(read.table, read.searchFirst, read.joinFetch, read.orderBy, 0, 1, function(err, res){
                             if(err){ return reject(err) ;}
                             results[read.name] = res.length>0?res[0]:null ;
-                            console.log("searchFirst "+read.name) ;
                             resolve() ;
                         });
                     })) ;
@@ -1072,7 +1101,7 @@
                     //assuming using FK
 
                     //look in this table FK
-                    this.schema[thisTable].fk.forEach(function(fk){
+                    this.db.schema[thisTable].fk.forEach(function(fk){
                         if(fk.targetTable === join.otherTable){
                             pairs[fk.thisColumn] = fk.targetColumn ;
                         }
@@ -1080,7 +1109,7 @@
                     
                     if(Object.keys(pairs).length === 0){
                         //look in other table FK
-                        this.schema[join.otherTable].fk.forEach(function(fk){
+                        this.db.schema[join.otherTable].fk.forEach(function(fk){
                             if(fk.targetTable === thisTable){
                                 pairs[fk.targetColumn] = fk.thisColumn ;
                             }
@@ -1105,8 +1134,6 @@
                 var limit = null;
                 if(type === "2one"){
                     limit = 1 ;
-                }else{
-                    throw ("Unknown join type "+type+", expected 2one or 2many") ;
                 }
                 //by default the record is to add on the main record we fetched
                 var recordHolder = record;
@@ -1257,7 +1284,10 @@
                 cursor.continue();
             } else {
                 // no more results
-                callback(null, records) ;
+                this._doJoinFetch(table, joinFetch, records, function(err){
+                    if(err){ return callback(err) ; }
+                    callback(null, records) ;
+                }) ;
             }
         }.bind(this);
     };
@@ -1306,6 +1336,8 @@
                     return val.test(record[k]) ;
                 } else if (val && typeof (val) === "string" && val.indexOf("%") !== -1) {
                     return new RegExp(val.replace(/%/g, "*")).test(record[k]) ;
+                } else {
+                    return record[k] == val ;
                 }
             }
             return false;
@@ -1319,6 +1351,9 @@
         }
         var search = [];
         if (pk.length === 1 && typeof (pkOrRecord) !== "object") {
+            if(!Array.isArray(pkOrRecord)){
+                pkOrRecord = [pkOrRecord] ;
+            }
             search = pkOrRecord;
         } else {
             pk.forEach(function (k) {
@@ -1527,7 +1562,7 @@
                     //assuming using FK
 
                     //look in this table FK
-                    this.schema[thisTable].fk.forEach(function(fk){
+                    this.db.schema[thisTable].fk.forEach(function(fk){
                         if(fk.targetTable === join.otherTable){
                             pairs[fk.thisColumn] = fk.targetColumn ;
                         }
