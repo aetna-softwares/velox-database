@@ -153,7 +153,7 @@ class VeloxSqlSync{
                                 tx.search("velox_modif_track", {
                                     table_name: table, 
                                     table_uid: pkNames[0], 
-                                    version_record: {ope: ">", value: record.velox_version_record-1}
+                                    version_record: {ope: ">", value: (record.velox_version_record || 0)-1}
                                 }, "version_record", (err, modifications)=>{
                                     if(err){ return cb(err); }
                                     

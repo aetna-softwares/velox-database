@@ -266,28 +266,79 @@
         }
     } ;
 
+    extension.extendsObj.prepareSerializableRecords = function(table, records, callback){
+        this.getSchema(function(err, schema){
+            if(err){ return callback(err) ;}
+            var preparedRecords = [] ;
+            records.forEach(function(record){
+                preparedRecords.push(this._prepareSerializableRecord(table, record, schema)) ;
+            }.bind(this)) ;
+            callback(null, preparedRecords) ;
+        }.bind(this)) ;
+    } ;
+
+    extension.extendsObj.prepareSerializableRecord = function(table, record, callback){
+        this.prepareSerializableRecords(table, [record], function(err, records){
+            if(err){ return callback(err) ;}
+            callback(null, records[0]) ;
+        });
+    } ;
+    
+    extension.extendsObj._prepareSerializableRecord = function(table, record, schema){
+        var preparedRecord = {} ;
+        schema[table].columns.forEach(function(col){
+            var val = record[col.name] ;
+            if(val !== undefined){
+                if(val && typeof(val) === "object" && val.constructor != Date){
+                    if(val.toNumber){
+                        val = val.toNumber() ;
+                    }else if(val.toString){
+                        val = val.toString() ;
+                    }else{
+                        val = ""+val ;
+                    }
+                }
+                preparedRecord[col.name] = val ;
+            }
+        }) ;
+        return preparedRecord ;
+    } ;
+
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.insert = function (table, record, callback) {
         doOperation(this, "insert" ,arguments, function(done){
-            saveOfflineChange([{ action: "insert", table: table, record: record }]);
-            storage.insert(table, record, done);
-        }, callback) ;
+            this.prepareSerializableRecord(table, record, function(err, record){
+                if(err){ return done(err) ;}
+                record.velox_version_record = 0;
+                record.velox_version_date = new Date();
+                saveOfflineChange([{ action: "insert", table: table, record: record }]);
+                storage.insert(table, record, done);
+            }.bind(this)) ;
+        }.bind(this), callback) ;
     };
 
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.update = function (table, record, callback) {
         doOperation(this, "update", arguments, function(done){
-            saveOfflineChange([{ action: "update", table: table, record: record }]);
-            storage.update(table, record, done);
-        }, callback) ;
+            this.prepareSerializableRecord(table, record, function(err, record){
+                if(err){ return done(err) ;}
+                record.velox_version_record = (record.velox_version_record || 0) + 1;
+                record.velox_version_date = new Date();
+                saveOfflineChange([{ action: "update", table: table, record: record }]);
+                storage.update(table, record, done);
+            }.bind(this)) ;
+        }.bind(this), callback) ;
     };
 
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
     extension.extendsObj.remove = function (table, record, callback) {
         doOperation(this, "remove", arguments,  function(done){
-            saveOfflineChange([{ action: "remove", table: table, record: record }]);
-            storage.remove(table, record, done);
-        }, callback) ;
+            this.prepareSerializableRecord(table, record, function(err, record){
+                if(err){ return done(err) ;}
+                saveOfflineChange([{ action: "remove", table: table, record: record }]);
+                storage.remove(table, record, done);
+            }.bind(this)) ;
+        }.bind(this), callback) ;
     };
 
     //TODO check schema to have foreign key and check consistence, if the FK is wrong sync will fail afterward
@@ -300,9 +351,17 @@
 
     extension.extendsObj.transactionalChanges = function (changeSet, callback) {
         doOperation(this, "transactionalChanges",arguments,  function(done){
-            saveOfflineChange(changeSet);
-            storage.transactionalChanges(changeSet, done);
-        }, callback) ;
+            this.getSchema(function(err, schema){
+                if(err){ return callback(err) ;}
+                changeSet.forEach(function(change){
+                    change.record.velox_version_record = change.record.velox_version_record!==undefined?change.record.velox_version_record+1:0;
+                    change.record.velox_version_date = new Date();
+                    change.record = this._prepareSerializableRecord(change.table, change.record, schema) ;
+                }.bind(this)) ;
+                saveOfflineChange(changeSet);
+                storage.transactionalChanges(changeSet, done);
+            }.bind(this)) ;
+        }.bind(this), callback) ;
     };
     
     extension.extendsObj.getByPk = function (table, pkOrRecord, joinFetch, callback) {
@@ -827,7 +886,7 @@
                 tables.push(j.otherTable) ;
             }
             if(j.joins){
-                this.getJoinTables(j.joins) ;
+                tables = tables.concat(this.getJoinTables(j.joins)) ;
             }
         }.bind(this)) ;
         return tables;
@@ -914,51 +973,61 @@
     };
 
     VeloxDbOfflineIndDb.prototype.multiread = function (reads, callback) {
-        var tables = reads.map(function(r){return r.table;}) ;
+        
+        var results = {} ;
+        var runningTx = 0;
+        var globalError = null;
+
         reads.forEach(function(read){
+            var tables = [read.table] ;
             if(read.joinFetch){
                 tables = tables.concat(this.getJoinTables(read.joinFetch)) ;
             }
-        }.bind(this)) ;
-        this.tx(reads.map(function(r){return r.table;}), "readonly", function(tx, done){
-            var results = {} ;
-            var readPromises = [] ;
-            reads.forEach(function(read){
+
+            runningTx++;
+            
+            this.tx(tables, "readonly", function(tx, done){
                 if(read.getByPk){
-                    readPromises.push(new Promise(function(resolve, reject){
-                        tx.getByPk(read.table, read.getByPk, read.joinFetch, function(err, res){
-                            if(err){ return reject(err) ;}
-                            results[read.name] = res ;
-                            resolve() ;
-                        });
-                    })) ;
+                    tx.getByPk(read.table, read.getByPk, read.joinFetch, function(err, res){
+                        if(err){ return done(err) ;}
+                        results[read.name] = res ;
+                        done(null, res) ;
+                    });
                 }else if(read.search){
-                    readPromises.push(new Promise(function(resolve, reject){
-                        tx.search(read.table, read.search, read.joinFetch, read.orderBy, read.offset, read.limit, function(err, res){
-                            if(err){ return reject(err) ;}
-                            results[read.name] = res ;
-                            resolve() ;
-                        });
-                    })) ;
+                    //console.log("start search "+read.table+" in "+tx.idTr) ;
+                    tx.search(read.table, read.search, read.joinFetch, read.orderBy, read.offset, read.limit, function(err, res){
+                        //console.log("finish search "+read.table+" in "+tx.idTr, res) ;
+                        if(err){ return done(err) ;}
+                        results[read.name] = res ;
+                        done(null, res) ;
+                    });
                 }else if(read.searchFirst){
-                    readPromises.push(new Promise(function(resolve, reject){
-                        tx.searchFirst(read.table, read.searchFirst, read.joinFetch, read.orderBy, 0, 1, function(err, res){
-                            if(err){ return reject(err) ;}
-                            results[read.name] = res.length>0?res[0]:null ;
-                            resolve() ;
-                        });
-                    })) ;
+                    tx.searchFirst(read.table, read.searchFirst, read.joinFetch, read.orderBy, 0, 1, function(err, res){
+                        if(err){ return done(err) ;}
+                        results[read.name] = res.length>0?res[0]:null ;
+                        done(null, res.length>0?res[0]:null) ;
+                    });
+                }else{
+                    done("No action found in multiread "+JSON.stringify(read)) ;
+                }
+            }, function(err){
+                runningTx--;
+                if(globalError){
+                    //already in error, discard
+                    return;
+                }
+                if(err){ 
+                    globalError = err ;
+                    return callback(err) ;
+                }
+                if(runningTx === 0){
+                    callback(null, results) ;
                 }
             }) ;
-            Promise.all(readPromises).then(function(){
-                console.log("multiread done") ;
-                done(null, results) ;
-            }).catch(function(err){
-                done(err) ;
-            }) ;
-        }, callback);
+        }.bind(this));
     };
 
+    var idTr = 0;
 
     /**
      * Create a new transaction
@@ -967,23 +1036,24 @@
      * @param {string} [mode] read mode (readonly, readwrite). Default: readwrite
      */
     function VeloxDbOfflineIndDbTransaction(db, tables,  mode, callbackFinished){
+        this.idTr = idTr++;
         this.db = db ;
         this.tables = tables;
         this.mode = mode||"readwrite";
         this.tx = db.db.transaction(tables, mode);
-        console.log("transaction start") ;
+        //console.log("transaction start "+this.idTr) ;
         this.tx.onerror = function(){
-            console.log("transaction error", this.tx.error) ;
+            //console.log("transaction error "+this.idTr, this.tx.error) ;
             callbackFinished(this.tx.error) ;
         }.bind(this) ;
         this.tx.onabort = function(){
-            console.log("transaction abort", this.tx.error) ;
+            //console.log("transaction abort "+this.idTr, this.tx.error) ;
             callbackFinished(this.tx.error) ;
         }.bind(this) ;
         this.tx.oncomplete = function() {
-            console.log("transaction done") ;
+            //console.log("transaction done "+this.idTr) ;
             callbackFinished() ;
-        };
+        }.bind(this) ;
     }
 
     VeloxDbOfflineIndDbTransaction.prototype.abort = function () {
@@ -992,9 +1062,9 @@
 
     VeloxDbOfflineIndDbTransaction.prototype.rollback = VeloxDbOfflineIndDbTransaction.prototype.abort ;
 
+    
+
     VeloxDbOfflineIndDbTransaction.prototype.insert = function (table, record, callback) {
-        record.velox_version_record = 0;
-        record.velox_version_date = new Date();
         var request = this.tx.objectStore(table).add(record);
         request.onsuccess = function() {
             return callback(null, record);
@@ -1005,8 +1075,6 @@
     };
 
     VeloxDbOfflineIndDbTransaction.prototype.update = function (table, record, callback) {
-        record.velox_version_record = (record.velox_version_record || 0) + 1;
-        record.velox_version_date = new Date();
         var request = this.tx.objectStore(table).put(record);
         request.onsuccess = function() {
             return callback(null, record);
@@ -1072,24 +1140,24 @@
     VeloxDbOfflineIndDbTransaction.prototype._doJoinFetch = function (table, joinFetch, record, callback) {
         if(joinFetch){
             var tablesValues = {} ;
-            var searchPromises = [] ;
-            joinFetch.forEach(function(join){
-
-                var searchJoin = null ;
+            var runningSearch = 0 ;
+            var searchError = false;
+            for(var y=0; y<joinFetch.length; y++){
+                var join = joinFetch[0] ;
 
                 var thisTable = join.thisTable || table ;
                 if(join.thisTable){
-                    if(!this.schema[join.thisTable]){ throw ("Unknown table "+join.thisTable) ;}
+                    if(!this.db.schema[join.thisTable]){ throw ("Unknown table "+join.thisTable) ;}
                 }
                 var thisField = join.thisField ;
                 if(thisField){
-                    if(!this.schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
+                    if(!this.db.schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
                         throw ("Unknown columns "+thisTable+"."+thisField) ;
                     }
                 }
                 var otherField = join.otherField ;
                 if(otherField){
-                    if(!this.schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
+                    if(!this.db.schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
                         throw ("Unknown columns "+join.otherTable+"."+otherField) ;
                     }
                 }
@@ -1123,12 +1191,7 @@
                     pairs[thisField] = otherField ;
                 }
 
-                if(thisTable === table){
-                    searchJoin = {} ;
-                    Object.keys(pairs).forEach(function(f){
-                        searchJoin[f] = record[pairs[f]] ;
-                    }) ;
-                }
+                
 
                 var type = join.type || "2one" ;
                 var limit = null;
@@ -1141,34 +1204,39 @@
                     //the record is to put on a subrecord
                     recordHolder = tablesValues[thisTable] ;
                 }
-                if(Array.isArray(recordHolder)){
-                    //the record holder has many values, we search for each of its value
-                    recordHolder.forEach(function(r, i){
-                        searchPromises.push(new Promise(function(resolve, reject){
-                            this.search(join.otherTable, searchJoin, join.joins, 0, limit, function(err, otherRecords){
-                                if(err){ return reject(err) ;}
-                                recordHolder[i][join.name||join.otherTable] = limit===1?otherRecords[0]:otherRecords ;
-                                resolve() ;
-                            }) ;
-                        }.bind(this))) ;
-                    }.bind(this));
-                }else{
-                    //the record holder has only one value, we search for it
-                    searchPromises.push(new Promise(function(resolve, reject){
-                        this.search(join.otherTable, searchJoin, join.joins, 0, limit, function(err, otherRecords){
-                            if(err){ return reject(err) ;}
-                            recordHolder[join.name||join.otherTable] = limit===1?otherRecords[0]:otherRecords ;
-                            resolve() ;
-                        }) ;
-                    }.bind(this))) ;
+                if(!Array.isArray(recordHolder)){
+                    recordHolder = [recordHolder] ;
                 }
-            }.bind(this)) ;
+                recordHolder.forEach(function(r){
+                    var searchJoin = {} ;
+                    Object.keys(pairs).forEach(function(f){
+                        searchJoin[f] = r[pairs[f]] ;
+                    }) ;
+                    //console.log("START join "+table+" > "+join.otherTable+" WHERE ", searchJoin);
+                    runningSearch++ ;
+                    this.search(join.otherTable, searchJoin, join.joins, null, 0, limit, function(err, otherRecords){
+                        runningSearch--;
+                        if(searchError){
+                            //already stop in error, discard
+                            return;
+                        }
+                        if(err){ 
+                            searchError = err ;
+                            return callback(err) ;
+                        }
+                        //console.log(">>END join "+table+" > "+join.otherTable+" (name : "+join.name+") RESULTS ", otherRecords);
+                        r[join.name||join.otherTable] = limit===1?otherRecords[0]:otherRecords ;
+                        if(runningSearch === 0){
+                            callback() ;
+                        }
+                    }) ;
+                }.bind(this)) ;
+            }
 
-            Promise.all(searchPromises).then(function(){
+            if(runningSearch === 0){
+                //no search to do
                 callback() ;
-            }).catch(function(err){
-                callback(err) ;
-            }) ;
+            }
 
         }else{
             callback() ;
@@ -1260,8 +1328,9 @@
         var request = this.tx.objectStore(table).openCursor();
         var off = offset || 0 ;
         request.onerror = function() {
+            //console.log("search error in "+this.idTr) ;
             return callback(request.error);
-        };
+        }.bind(this);
         request.onsuccess = function(event) {
             var cursor = event.target.result;
             if(cursor) {
@@ -1284,10 +1353,12 @@
                 cursor.continue();
             } else {
                 // no more results
+                //console.log("start join fetch "+this.idTr, table, records, joinFetch) ;
                 this._doJoinFetch(table, joinFetch, records, function(err){
                     if(err){ return callback(err) ; }
                     callback(null, records) ;
-                }) ;
+                    //console.log("end join fetch "+this.idTr, table, records) ;
+                }.bind(this)) ;
             }
         }.bind(this);
     };
