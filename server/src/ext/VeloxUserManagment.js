@@ -818,8 +818,8 @@ class VeloxUserManagment{
                                 }
     
                                 //no full access granted to this user, get available rules
+                                let authorizedLevelsOnRealm = [] ;
                                 for(let rule of table.rules){
-                                    let authorizedLevelsOnRealm = [] ;
                                     if(rule.rights.indexOf(action) !== -1 && rule.realmRestrict){
                                         if(Array.isArray(rule.profile)){
                                             authorizedLevelsOnRealm = authorizedLevelsOnRealm.concat(rule.profile) ;
@@ -827,9 +827,11 @@ class VeloxUserManagment{
                                             authorizedLevelsOnRealm.push(rule.profile) ;
                                         }
                                     }
-                                    if(authorizedLevelsOnRealm.length === 0){
-                                        //no authorization rule on realm, look for user
-                                        let authorizedLevelsOnUser = [] ;
+                                }
+                                if(authorizedLevelsOnRealm.length === 0){
+                                    //no authorization rule on realm, look for user
+                                    let authorizedLevelsOnUser = [] ;
+                                    for(let rule of table.rules){
                                         if(rule.rights.indexOf(action) !== -1 && rule.userRestrict){
                                             if(Array.isArray(rule.profile)){
                                                 authorizedLevelsOnUser = authorizedLevelsOnUser.concat(rule.profile) ;
@@ -837,83 +839,32 @@ class VeloxUserManagment{
                                                 authorizedLevelsOnUser.push(rule.profile) ;
                                             }
                                         }
+                                    }
                                         
-                                        if(authorizedLevelsOnUser.length === 0){
-                                            //no authorization on user neither, give back fake empty table
-                                            return callback("No rule for "+action+" permitted to "+table.name) ;
-                                        }else{
-                                            //check if given user is correct on record
-                                            var userColPath = table.userCol.split(".") ;
-
-                                            if(userColPath.length === 1){
-                                                if(record[table.userCol] !== user.uid){
-                                                    return callback("You're not allowed to set user "+record[table.userCol]+" in table "+table.name) ;
-                                                }
-                                                if(authorizedLevelsOnUser.indexOf(profileLevel) === -1){
-                                                    return callback("You're not allowed for action "+action+" on table "+table.name) ;
-                                                }
-                                            }else if(userColPath.length > 1){
-                                                //search uid on related table
-
-                                                var currentTable = userColPath[0] ;
-                                                var from = `FROM ${currentTable}` ;
-                                                userColPath.forEach((p, i)=>{
-                                                    if(i === userColPath.length-1){
-                                                        from += ` JOIN velox_user u ON ${currentTable}.${p} = u.uid
-                                                        JOIN velox_user_profile p ON u.profile_code = p.code
-                                                         ` ;
-                                                    }else if(i>0){
-                                                        from += ` JOIN ${p} `+createJoinOnFromFk(this.cache.schema, currentTable, p) ;
-                                                        currentTable = p ;
-                                                    }
-                                                }) ;
-
-                                                let params = [] ;
-                                                let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, userColPath[0]) ;
-                                                let where = Object.keys(whereCols).map((thisCol)=>{
-                                                    params.push(record[thisCol]) ;
-                                                    return userColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
-                                                }).join(" AND ") ;
-
-                                                var sql = `(SELECT 1
-                                                    FROM
-                                                    ${from} 
-                                                    WHERE u.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
-                                                    AND ${where}
-                                                )`;
-                                                this.unsafe((txUnsafe, done)=>{
-                                                    txUnsafe._query(sql, params, done) ;
-                                                }, (err, results)=>{
-                                                    if(err){ return callback(err) ;}
-                                                    if(results.rows.length === 0){
-                                                        return callback("You're not allowed for action "+action+" on table "+table.name) ;
-                                                    } else {
-                                                        return callback(); //OK
-                                                    }
-                                                }) ;
-                                            }
-                                        }
+                                    if(authorizedLevelsOnUser.length === 0){
+                                        //no authorization on user neither, give back fake empty table
+                                        return callback("No rule for "+action+" permitted to "+table.name) ;
                                     }else{
-                                        //check if realm is authorized
-                                        var realmColPath = table.realmCol.split(".") ;
+                                        //check if given user is correct on record
+                                        var userColPath = table.userCol.split(".") ;
 
-                                        if(realmColPath.length === 1){
-                                            if(record[table.realmCol] !== currentRealm){
-                                                return callback("You're not allowed to set realm "+record[table.realmCol]+" in table "+table.name) ;
+                                        if(userColPath.length === 1){
+                                            if(record[table.userCol] !== user.uid){
+                                                return callback("You're not allowed to set user "+record[table.userCol]+" in table "+table.name) ;
                                             }
-                                            if(authorizedLevelsOnRealm.indexOf(profileLevel) === -1){
+                                            if(authorizedLevelsOnUser.indexOf(profileLevel) === -1){
                                                 return callback("You're not allowed for action "+action+" on table "+table.name) ;
                                             }
-                                        }else if(realmColPath.length > 1){
-                                            //search realm on related table
+                                        }else if(userColPath.length > 1){
+                                            //search uid on related table
 
-                                            var currentTable = realmColPath[0] ;
+                                            var currentTable = userColPath[0] ;
                                             var from = `FROM ${currentTable}` ;
-                                            realmColPath.forEach((p, i)=>{
-                                                if(i === realmColPath.length-1){
-                                                     from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
-                                                    JOIN velox_user_profile p ON r.profile_code = p.code
-                                                    ` ;
+                                            userColPath.forEach((p, i)=>{
+                                                if(i === userColPath.length-1){
+                                                    from += ` JOIN velox_user u ON ${currentTable}.${p} = u.uid
+                                                    JOIN velox_user_profile p ON u.profile_code = p.code
+                                                        ` ;
                                                 }else if(i>0){
                                                     from += ` JOIN ${p} `+createJoinOnFromFk(this.cache.schema, currentTable, p) ;
                                                     currentTable = p ;
@@ -921,16 +872,15 @@ class VeloxUserManagment{
                                             }) ;
 
                                             let params = [] ;
-                                            let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
+                                            let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, userColPath[0]) ;
                                             let where = Object.keys(whereCols).map((thisCol)=>{
                                                 params.push(record[thisCol]) ;
-                                                return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                                return userColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
                                             }).join(" AND ") ;
 
                                             var sql = `(SELECT 1
-                                                FROM
                                                 ${from} 
-                                                WHERE r.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                                WHERE u.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
                                                 AND ${where}
                                             )`;
                                             this.unsafe((txUnsafe, done)=>{
@@ -944,8 +894,59 @@ class VeloxUserManagment{
                                                 }
                                             }) ;
                                         }
-                                    }    
-                                }
+                                    }
+                                }else{
+                                    //check if realm is authorized
+                                    var realmColPath = table.realmCol.split(".") ;
+
+                                    if(realmColPath.length === 1){
+                                        if(record[table.realmCol] !== currentRealm){
+                                            return callback("You're not allowed to set realm "+record[table.realmCol]+" in table "+table.name) ;
+                                        }
+                                        if(authorizedLevelsOnRealm.indexOf(profileLevel) === -1){
+                                            return callback("You're not allowed for action "+action+" on table "+table.name) ;
+                                        }
+                                        return callback(); //OK
+                                    }else if(realmColPath.length > 1){
+                                        //search realm on related table
+
+                                        var currentTable = realmColPath[0] ;
+                                        var from = `FROM ${currentTable}` ;
+                                        realmColPath.forEach((p, i)=>{
+                                            if(i === realmColPath.length-1){
+                                                    from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
+                                                JOIN velox_user_profile p ON r.profile_code = p.code
+                                                ` ;
+                                            }else if(i>0){
+                                                from += ` JOIN ${p} `+createJoinOnFromFk(this.cache.schema, currentTable, p) ;
+                                                currentTable = p ;
+                                            }
+                                        }) ;
+
+                                        let params = [] ;
+                                        let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
+                                        let where = Object.keys(whereCols).map((thisCol)=>{
+                                            params.push(record[thisCol]) ;
+                                            return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                        }).join(" AND ") ;
+
+                                        var sql = `(SELECT 1
+                                            ${from} 
+                                            WHERE r.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                            AND ${where}
+                                        )`;
+                                        this.unsafe((txUnsafe, done)=>{
+                                            txUnsafe._query(sql, params, done) ;
+                                        }, (err, results)=>{
+                                            if(err){ return callback(err) ;}
+                                            if(results.rows.length === 0){
+                                                return callback("You're not allowed for action "+action+" on table "+table.name) ;
+                                            } else {
+                                                return callback(); //OK
+                                            }
+                                        }) ;
+                                    }
+                                }    
                             }else{
                                 //no restriction rules
                                 return callback() ;

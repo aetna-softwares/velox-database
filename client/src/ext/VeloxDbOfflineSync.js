@@ -1065,33 +1065,48 @@
     
 
     VeloxDbOfflineIndDbTransaction.prototype.insert = function (table, record, callback) {
-        var request = this.tx.objectStore(table).add(record);
-        request.onsuccess = function() {
-            return callback(null, record);
-        };
-        request.onerror = function() {
-            return callback(request.error);
-        };
+        try{
+            var request = this.tx.objectStore(table).add(record);
+            request.onsuccess = function() {
+                return callback(null, record);
+            };
+            request.onerror = function() {
+                return callback(request.error);
+            };
+        }catch(err){
+            console.log("Error while insert in table", err) ;
+            callback(err) ;
+        }
     };
 
     VeloxDbOfflineIndDbTransaction.prototype.update = function (table, record, callback) {
-        var request = this.tx.objectStore(table).put(record);
-        request.onsuccess = function() {
-            return callback(null, record);
-        };
-        request.onerror = function() {
-            return callback(request.error);
-        };
+        try {
+            var request = this.tx.objectStore(table).put(record);
+            request.onsuccess = function() {
+                return callback(null, record);
+            };
+            request.onerror = function() {
+                return callback(request.error);
+            };
+        }catch(err){
+            console.log("Error while update in table", err) ;
+            callback(err) ;
+        }
     };
 
     VeloxDbOfflineIndDbTransaction.prototype.remove = function (table, pkOrRecord, callback) {
-        var request = this.tx.objectStore(table).delete(this._pkSearch(table, pkOrRecord));
-        request.onsuccess = function() {
-            return callback();
-        };
-        request.onerror = function() {
-            return callback(request.error);
-        };
+        try{
+            var request = this.tx.objectStore(table).delete(this._pkSearch(table, pkOrRecord));
+            request.onsuccess = function() {
+                return callback();
+            };
+            request.onerror = function() {
+                return callback(request.error);
+            };
+        }catch(err){
+            console.log("Error while remove in table", err) ;
+            callback(err) ;
+        }
     };
 
 
@@ -1124,17 +1139,22 @@
             joinFetch = null;
         }
 
-        var request = this.tx.objectStore(table).get(this._pkSearch(table, pkOrRecord));
-        request.onsuccess = function() {
-            var record = request.result ;
-            this._doJoinFetch(table, joinFetch, record, function(err){
-                if(err){ return callback(err) ;}
-                callback(null, record);
-            }) ;
-        }.bind(this);
-        request.onerror = function() {
-            return callback(request.error);
-        };
+        try{
+            var request = this.tx.objectStore(table).get(this._pkSearch(table, pkOrRecord));
+            request.onsuccess = function() {
+                var record = request.result ;
+                this._doJoinFetch(table, joinFetch, record, function(err){
+                    if(err){ return callback(err) ;}
+                    callback(null, record);
+                }) ;
+            }.bind(this);
+            request.onerror = function() {
+                return callback(request.error);
+            };
+        }catch(err){
+            console.log("Error while get by pk in table", err) ;
+            callback(err) ;
+        }
     };
 
     VeloxDbOfflineIndDbTransaction.prototype._doJoinFetch = function (table, joinFetch, record, callback) {
@@ -1325,42 +1345,47 @@
         }
 
         var records = [];
-        var request = this.tx.objectStore(table).openCursor();
-        var off = offset || 0 ;
-        request.onerror = function() {
-            //console.log("search error in "+this.idTr) ;
-            return callback(request.error);
-        }.bind(this);
-        request.onsuccess = function(event) {
-            var cursor = event.target.result;
-            if(cursor) {
-                // cursor.value contains the current record being iterated through
-                // this is where you'd do something with the result
-                var currentRecord = cursor.value ;
-                if(this.testRecord(currentRecord, search)){
-                    if(off > 0){
-                        off-- ;
-                    }else{
-                        records.push(currentRecord) ;
+        try{
+            var request = this.tx.objectStore(table).openCursor();
+            var off = offset || 0 ;
+            request.onerror = function() {
+                //console.log("search error in "+this.idTr) ;
+                return callback(request.error);
+            }.bind(this);
+            request.onsuccess = function(event) {
+                var cursor = event.target.result;
+                if(cursor) {
+                    // cursor.value contains the current record being iterated through
+                    // this is where you'd do something with the result
+                    var currentRecord = cursor.value ;
+                    if(this.testRecord(currentRecord, search)){
+                        if(off > 0){
+                            off-- ;
+                        }else{
+                            records.push(currentRecord) ;
+                        }
                     }
-                }
-                if(limit && records.length === limit){
+                    if(limit && records.length === limit){
+                        this._doJoinFetch(table, joinFetch, records, function(err){
+                            if(err){ return callback(err) ; }
+                            callback(null, records) ;
+                        }) ;
+                    }
+                    cursor.continue();
+                } else {
+                    // no more results
+                    //console.log("start join fetch "+this.idTr, table, records, joinFetch) ;
                     this._doJoinFetch(table, joinFetch, records, function(err){
                         if(err){ return callback(err) ; }
                         callback(null, records) ;
-                    }) ;
+                        //console.log("end join fetch "+this.idTr, table, records) ;
+                    }.bind(this)) ;
                 }
-                cursor.continue();
-            } else {
-                // no more results
-                //console.log("start join fetch "+this.idTr, table, records, joinFetch) ;
-                this._doJoinFetch(table, joinFetch, records, function(err){
-                    if(err){ return callback(err) ; }
-                    callback(null, records) ;
-                    //console.log("end join fetch "+this.idTr, table, records) ;
-                }.bind(this)) ;
-            }
-        }.bind(this);
+            }.bind(this);
+        }catch(err){
+            console.log("Error while search in table", err) ;
+            callback(err) ;
+        }
     };
 
     VeloxDbOfflineIndDbTransaction.prototype.testRecord = function(record, search){
