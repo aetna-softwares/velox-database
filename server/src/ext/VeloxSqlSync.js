@@ -40,11 +40,11 @@ class VeloxSqlSync{
      * 
      * @param {VeloxSqlSyncOption} [options] options 
      */
-    constructor(){
+    constructor(options){
         this.name = "VeloxSqlSync";
         this.dependencies = [
-            new VeloxSqlModifTracker(),
-            new VeloxSqlDeleteTracker()
+            new VeloxSqlModifTracker(options),
+            new VeloxSqlDeleteTracker(options)
         ] ;
         var self = this ;
         this.extendsProto = {
