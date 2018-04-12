@@ -645,6 +645,8 @@ class VeloxUserManagment{
                 if(!hiddenCols || this.disableRestriction) { return sql ;}
                 return `(SELECT *, ${hiddenCols.map((c)=>{ return " NULL AS "+c ;}).join(',')} FROM ${sql} subH)` ;
             } ;
+            var useProfile = this.options.useProfile ;
+            var useRealm = this.options.useRealm ;
             for(let table of this.options.restrictedTables){
 
                 //override the gettable to give a restricted view according to read restriction
@@ -683,13 +685,22 @@ class VeloxUserManagment{
                         if(table.rules){
                             var profileLevel = user.profile ? user.profile.level : null;
 
+                            if(!useProfile){
+                                //don't use profile, so consider as "super admin"
+                                profileLevel = 0 ;
+                            }
+
                             if(profileLevel !== undefined && profileLevel !== null){
-                                //This use has a global profile level
+                                //This user has a global profile level
 
                                 //check if a rule grant a read access without realm restriction
                                 let hasFullReadAccess = false;
                                 for(let rule of table.rules){
-                                    if(rule.rights.indexOf("read") !== -1 && !rule.realmRestrict 
+                                    if(!useProfile){
+                                        //don't use profile, so consider as "super admin"
+                                        rule.profile = 0 ;
+                                    }
+                                    if(rule.rights.indexOf("read") !== -1 && !rule.realmRestrict && !rule.userRestrict 
                                         && (rule.profile === profileLevel || ( rule.profile.indexOf && rule.profile.indexOf(profileLevel) !== -1 ) )){
                                             hasFullReadAccess = true ; 
                                             break ;
@@ -703,6 +714,10 @@ class VeloxUserManagment{
 
                             //no full read access granted to this user, get available rules
                             for(let rule of table.rules){
+                                if(!useProfile){
+                                    //don't use profile, so consider as "super admin"
+                                    rule.profile = 0 ;
+                                }
                                 let authorizedLevelsOnRealm = [] ;
                                 if(rule.rights.indexOf("read") !== -1 && rule.realmRestrict){
                                     if(Array.isArray(rule.profile)){
