@@ -123,9 +123,16 @@ class VeloxSqlModifTracker{
         changes.push({
             sql: this.getCreateTableModifTrack(backend)
         }) ;
+
+        // var tablesToUpdate = [] ;
+
         changes.push({
             run: (tx, cb)=>{
                 this.addColumnToTables(backend, tx, "velox_version_record", this.getTypeBigInt(backend), cb);
+                // this.getTablesMissingColumn(backend, "velox_version_record", function(err, result){
+                //     if(err){ return cb(err) ; }
+                //     tablesToUpdate = result.rows.map((r)=>{ return r.table_name ;}) ;
+                // }) ;
             }
         }) ;
         changes.push({
@@ -155,6 +162,18 @@ class VeloxSqlModifTracker{
                 this.createTriggerForTables(backend, tx, this.createTriggerBeforeInsert.bind(this), cb);
             }
         }) ;
+
+        // changes.push({
+        //     run: (tx, cb)=>{
+        //         let alertJob = new AsyncJob(AsyncJob.SERIES) ;
+        //         for(let t of tablesToUpdate){
+        //             alertJob.push((cb)=>{
+        //                 tx._query(`UPDATE ${t} SET velox_version_date = now()`, cb) ;
+        //             }) ;
+        //         }
+        //         alertJob.async(cb) ;
+        //     }
+        // }) ;
 
         return changes;
     }
@@ -213,7 +232,7 @@ class VeloxSqlModifTracker{
      */
     getTypeBigInt(backend){
         if(backend === "pg"){
-            return "bigint";
+            return "bigint not null default 0";
         }
         throw "not implemented for backend "+backend ;
     }
@@ -235,7 +254,7 @@ class VeloxSqlModifTracker{
      */
     getTypeTimestamp(backend){
         if(backend === "pg"){
-            return "timestamp without time zone";
+            return "timestamp without time zone default now()";
         }
         throw "not implemented for backend "+backend ;
     }
