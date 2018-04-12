@@ -38,7 +38,7 @@ class VeloxDatabase {
     constructor(options){
         this.options = options ;
 
-        for( let k of ["user", "host", "port", "database", "password", "backend", "migrationFolder"]){
+        for( let k of ["user", "host", "port", "database", "password", "backend"]){
             if(options[k] === undefined) { throw "VeloxDatabase : missing option "+k ; } 
         }
 
@@ -210,6 +210,17 @@ class VeloxDatabase {
             } ;
         }) ;
         this.backend.customClientInit.push(function(client){
+            if(!client.unsafe){
+                client.unsafe = function(unsafeFun, callback){
+                    if(!callback){ callback = function(){} ;}
+                    let tx = this ;
+                    unsafeFun(tx, function(err){
+                        if(err){ callback(err) ;}
+                        callback.apply(null, arguments) ;
+                    }.bind(this)) ;
+                } ;
+            }
+
             client.changes = function(changeSet, done){
                 let tx = this ;
                 let results = [] ;
