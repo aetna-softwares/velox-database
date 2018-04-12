@@ -107,6 +107,12 @@
             dbApi.getSchema = dbApi.schema = function( callback){
                 this.getSchema( callback) ;
             }.bind(this) ;
+            dbApi.sync = function(tables, callback){
+                this.sync(tables, callback) ;
+            }.bind(this) ;
+            dbApi.syncSchema = function(callback){
+                this.syncSchema(callback) ;
+            }.bind(this) ;
 
 
             callback() ;
