@@ -142,7 +142,7 @@ class VeloxDbPgClient {
         }
         this.logger.debug("Run SQL "+sql+", params "+JSON.stringify(params)) ;
         let lowerSql = sql.toLowerCase() ;
-        if(lowerSql.indexOf("create") != -1 || lowerSql.indexOf("alter") != -1 ){
+        if(lowerSql.indexOf("create ") != -1 || lowerSql.indexOf("alter ") != -1 ){
             delete this.cache.schema ;
         }
         this.connection.query(sql, params, (err, results)=>{
@@ -257,7 +257,7 @@ class VeloxDbPgClient {
         if(otherField && !thisField || !otherField && thisField){ throw ("You must set both otherField and thisField") ; }
 
         if(otherField && thisField){
-            j += " ON "+aliases[aliasId]+"."+otherField+" = "+aliases[parentAliasId]+"."+thisField ;
+            j += " ON "+aliases[aliasId]+".\""+otherField+"\" = "+aliases[parentAliasId]+".\""+thisField+"\"" ;
         }else{
             if(!otherField){
                 //assuming using FK
@@ -267,7 +267,7 @@ class VeloxDbPgClient {
                 //look in this table FK
                 for(let fk of schema[thisTable].fk){
                     if(fk.targetTable === join.otherTable){
-                        pairs[aliases[parentAliasId]+"."+fk.thisColumn] = aliases[aliasId]+"."+fk.targetColumn ;
+                        pairs[aliases[parentAliasId]+".\""+fk.thisColumn+"\""] = aliases[aliasId]+".\""+fk.targetColumn+"\"" ;
                     }
                 }
 
@@ -275,13 +275,13 @@ class VeloxDbPgClient {
                     //look in other table FK
                     for(let fk of schema[join.otherTable].fk){
                         if(fk.targetTable === thisTable){
-                            pairs[aliases[aliasId]+"."+fk.thisColumn] = aliases[parentAliasId]+"."+fk.targetColumn ;
+                            pairs[aliases[aliasId]+".\""+fk.thisColumn+"\""] = aliases[parentAliasId]+".\""+fk.targetColumn+"\"" ;
                         }
                     }
                 }
 
                 if(Object.keys(pairs).length === 0){
-                    throw ("No otherField/thisField given and can't find in FK") ;
+                    throw ("No otherField/thisField given and can't find in FK in join "+JSON.stringify(join)) ;
                 }
 
                 for(let left of Object.keys(pairs)){
@@ -291,7 +291,7 @@ class VeloxDbPgClient {
         }
 
         for(let col of schema[join.otherTable].columns){
-            select.push(alias+"."+col.name+" AS "+alias+"_"+col.name) ;
+            select.push(alias+".\""+col.name+"\" AS "+alias+"_"+col.name) ;
         }
 
         from.push(j) ;
@@ -657,7 +657,7 @@ class VeloxDbPgClient {
             }
 
 
-            let sql = `INSERT INTO ${table}(${cols.join(",")}) VALUES ${values.join(",")} RETURNING *` ;
+            let sql = `INSERT INTO ${table}(${cols.map((c)=>{ return '"'+c+'"'}).join(",")}) VALUES ${values.join(",")} RETURNING *` ;
 
             this._queryFirst(sql, params, callback) ;
         }) ;
@@ -692,13 +692,13 @@ class VeloxDbPgClient {
                 for(let c of columns){
                     if(record[c.column_name] !== undefined && pkColumns.indexOf(c.column_name) === -1){
                         params.push(record[c.column_name]) ;
-                        sets.push(c.column_name+" = $"+params.length) ;
+                        sets.push("\""+c.column_name+"\" = $"+params.length) ;
                     }
                 }
                 let where = [] ;
                 for(let k of pkColumns){
                     params.push(record[k]) ;
-                    where.push(k+" = $"+params.length) ;
+                    where.push("\""+k+"\" = $"+params.length) ;
                 }
 
                 if(sets.length === 0){
@@ -1159,16 +1159,53 @@ class VeloxDbPgClient {
 
                             extendsSchema(schema, this.schema) ;
 
+                            for(let tableName of Object.keys(schema)){
+                                if(schema[tableName].pk.length === 0){
+                                    schema[tableName].pk = schema[tableName].columns.map((c)=>{return c.name ;}) ;
+                                }
+                            }
+
+
                             if(schema.velox_db_version){
                                 this._query("select * from velox_db_version", [], (err, results)=>{
                                     if(err){ return callback(err); }
                                     schema.__version = results.rows.length>0?results.rows[0]:{version: 0};
-                                    this.cache.schema = schema ;
-        
-                                    callback(null, schema) ;
+
+                                    if(schema.__version.version == 0){
+                                        //we don't manage schema change, so we just compute a fake version number from columns and table count
+                                        //this assume that you always add more table and columns to the database !
+                                        this._query(`
+                                        select t.table_count + c.col_count as version, NULL as last_update from 
+                                            (select count(*) col_count from information_schema.columns) c,
+                                            (select count(*) table_count from information_schema.tables) t
+                                        `, [], (err, results) => {
+                                            if(err){ return callback(err); }
+                                            schema.__version = results.rows.length>0?results.rows[0]:{version: 0};
+
+                                            this.cache.schema = schema ;
+                                            callback(null, schema) ;
+                                        }) ;
+                                    }else{
+                                        this.cache.schema = schema ;
+            
+                                        callback(null, schema) ;
+                                    }
+
                                 }) ;
                             }else{
-                                callback(null, schema) ;
+                                //we don't manage schema change, so we just compute a fake version number from columns and table count
+                                //this assume that you always add more table and columns to the database !
+                                this._query(`
+                                select t.table_count + c.col_count as version, NULL as last_update from 
+                                    (select count(*) col_count from information_schema.columns) c,
+                                    (select count(*) table_count from information_schema.tables) t
+                                `, [], (err, results) => {
+                                    if(err){ return callback(err); }
+                                    schema.__version = results.rows.length>0?results.rows[0]:{version: 0};
+
+                                    this.cache.schema = schema ;
+                                    callback(null, schema) ;
+                                }) ;
                             }
 
                     }) ;
