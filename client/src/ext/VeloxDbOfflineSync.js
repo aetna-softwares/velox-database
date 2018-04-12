@@ -464,6 +464,19 @@
         }
     };
 
+    /**
+     * Sync the schema definition
+     * 
+     * @param {function(Error, object)} callback called on finish, give stats about what has been sync
+     */
+    extension.extendsProto.syncSchema = function (callback) {
+        prepare.bind(this)(function (err) {
+            if (err) { return callback(err); }
+
+            syncSchema.bind(this)(callback) ;
+        }.bind(this));
+    };
+
     var syncing = false;
     /**
      * Sync data with distant server.
@@ -548,15 +561,24 @@
                             localTablesVersions.forEach(function (localTable) {
                                 localVersions[localTable.table_name] = localTable.version_table;
                             });
+                            var distantVersions = {};
+                            distantTablesVersions.forEach(function (distantTable) {
+                                distantVersions[distantTable.table_name] = distantTable.version_table;
+                            });
 
                             //add all tables with different version number
-                            var tableToSync = distantTablesVersions.filter(function (distantTable) {
-                                var localVersion = localVersions[distantTable.table_name] ;
+                            var tableToSync = tables.filter(function(table){
+                                var distantVersion = distantVersions[table] ;
+                                var localVersion = localVersions[table] ;
                                 if(!localVersion){
-                                    localVersions[distantTable.table_name] = -1 ;
+                                    localVersions[table] = -1 ;
                                 }
-                                return (!localVersion || localVersion < distantTable.version_table) ;
-                            }).map(function(t){ return t.table_name; });
+                                return (
+                                    !distantVersion || //case when distant version number is unknown, should sync for safety
+                                    !localVersion ||   //case when locale version is unkown, never seen
+                                    localVersion < distantVersion //case when distant version higher
+                                ) ;
+                            }) ;
 
                             //case of view that is composed by many table, must sync if any of used tables is modified
                             Object.keys(this.schema).forEach(function(tableName){
@@ -977,6 +999,10 @@
         var results = {} ;
         var runningTx = 0;
         var globalError = null;
+
+        if(reads.length === 0){
+            return callback(null, results) ;
+        }
 
         reads.forEach(function(read){
             var tables = [read.table] ;
