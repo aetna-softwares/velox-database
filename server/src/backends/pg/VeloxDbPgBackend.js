@@ -848,7 +848,7 @@ class VeloxDbPgClient {
                 }else{
                     if(Array.isArray(value)){
                         ope = "IN" ;
-                    }else if(value.indexOf("%") !== -1){
+                    }else if(typeof(value) === "string" && value.indexOf("%") !== -1){
                         ope = "ILIKE" ;
                     }                        
                 }
