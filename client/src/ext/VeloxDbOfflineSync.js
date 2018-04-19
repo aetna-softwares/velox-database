@@ -382,6 +382,24 @@
         }, callback) ;
     };
     
+    function getAllTableNames(read, names){
+        if(!names){
+            names = [] ;
+        }
+        if(read.table){
+            names.push(read.table) ;
+        }
+        if(read.otherTable){
+            names.push(read.otherTable) ;
+        }
+        if(read.joinFetch || read.joins){
+            (read.joinFetch || read.joins).forEach(function(join){
+                getAllTableNames(join, names) ;
+            }) ;
+        }
+        return names ;
+    }
+
     extension.extendsObj.multiread = function(reads, callback){
         var offlineReads = [] ;
         var onlineReads = {} ;
@@ -389,10 +407,9 @@
             if(!reads[k].table){
                 reads[k].table = k ;
             }
-            var tableName = reads[k].table;
             reads[k].name = k;
 
-            if(!isOffline(tableName)){
+            if(!getAllTableNames(reads[k]).every(function(t){ return isOffline(t); })){
                 onlineReads[k] = reads[k] ;
                 return  ;
             }
