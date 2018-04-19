@@ -207,14 +207,14 @@ class VeloxDbPgClient {
         return table;
     }
 
-    _createFromWithJoin(table, joinFetch, schema){
+    _createFromWithJoin(table, joinFetch, params, schema){
         let from = [`${this.getTable(table)} t`] ;
         let select = ["t.*"] ;
         let aliases = {} ;
         aliases.main = "t" ;
         if(joinFetch){
             for(let join of joinFetch){
-                this._addFromJoin(join, schema, select, from, aliases, table) ;
+                this._addFromJoin(join, schema, select, from, aliases, params, table) ;
             }
         }
         return {
@@ -224,7 +224,7 @@ class VeloxDbPgClient {
         } ;
     }
 
-    _addFromJoin(join, schema, select, from, aliases, baseTable, parentAliasId){
+    _addFromJoin(join, schema, select, from, aliases, params, baseTable, parentAliasId){
         if(!parentAliasId){ parentAliasId = "main" ;}
         let j = "";
         j += " LEFT JOIN" ;
@@ -290,15 +290,20 @@ class VeloxDbPgClient {
             }
         }
 
+        if(join.joinSearch){
+            var {where, params} = this._prepareWhereCondition(schema[join.otherTable].columns, join.joinSearch, join.otherTable, params, alias) ;
+            j += " AND "+where.join(" AND ") ;
+        }
+
         for(let col of schema[join.otherTable].columns){
-            select.push(alias+".\""+col.name+"\" AS "+alias+"_"+col.name) ;
+            select.push(alias+".\""+col.name+"\" AS \""+alias+"_"+col.name+"\"") ;
         }
 
         from.push(j) ;
 
         if(join.joins){
             for(let subJoin of join.joins){
-                this._addFromJoin(subJoin, schema, select, from, aliases, join.otherTable, aliasId) ;
+                this._addFromJoin(subJoin, schema, select, from, aliases, params, join.otherTable, aliasId) ;
             }
         }
     }
@@ -443,9 +448,10 @@ class VeloxDbPgClient {
                     pk = formatedPk ;
                 }
 
+                let params = [] ;
                 let selectFrom = null;
                 try{
-                    selectFrom = this._createFromWithJoin(table, joinFetch, schema) ;
+                    selectFrom = this._createFromWithJoin(table, joinFetch, params, schema) ;
                 }catch(e){
                     return callback(e) ;
                 }
@@ -453,7 +459,7 @@ class VeloxDbPgClient {
                 let from = selectFrom.from ;
                 let aliases = selectFrom.aliases;
                 let where = [] ;
-                let params = [] ;
+                
                 
                 for(let k of pkColumns){
                     params.push(pk[k]) ;
@@ -830,10 +836,13 @@ class VeloxDbPgClient {
         }) ;
     }
 
-    _prepareWhereCondition(columns, search, table, params){
+    _prepareWhereCondition(columns, search, table, params, alias){
         let where = [];
         if(!params){
             params = [] ;
+        }
+        if(!alias){
+            alias = "t" ;
         }
         for(let c of columns){
             if(search[c.name] !== undefined){
@@ -862,21 +871,21 @@ class VeloxDbPgClient {
                         params.push(v) ;
                         wVals.push("$"+params.length) ;
                     }
-                    where.push("t."+c.name+" "+ope+" ("+wVals.join(",")+")") ;
+                    where.push(alias+"."+c.name+" "+ope+" ("+wVals.join(",")+")") ;
                 } else if (ope.toUpperCase() === "BETWEEN"){
                     if(!Array.isArray(value) || value.length !== 2){
                         throw ("Search in table "+table+" failed. Search operand BETWEEN provided with wrong value. Expected an array with 2 values") ;
                     }
                     params.push(value[0]) ;
                     params.push(value[1]) ;
-                    where.push("t."+c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
+                    where.push(alias+"."+c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
                 } else {
                     //simple value ope
                     if(ope === "=" && value === null){
-                        where.push("t."+c.name+" IS NULL") ;
+                        where.push(alias+"."+c.name+" IS NULL") ;
                     }else{
                         params.push(value) ;
-                        where.push("t."+c.name+" "+ope+" $"+params.length) ;
+                        where.push(alias+"."+c.name+" "+ope+" $"+params.length) ;
                     }
                 }
             }
@@ -887,7 +896,7 @@ class VeloxDbPgClient {
             }
             var subWheres = [] ;
             for(let orPart of search.$or){
-                var subConditions = this._prepareWhereCondition(columns, orPart, table, params) ;
+                var subConditions = this._prepareWhereCondition(columns, orPart, table, params, alias) ;
                 subWheres.push(subConditions.where.join(" AND ")) ;
             }
             where.push("("+subWheres.map((w)=>{ return "("+w+")" ;}).join(" OR ")+")") ;
@@ -898,7 +907,7 @@ class VeloxDbPgClient {
             }
             var subWheres = [] ;
             for(let andPart of search.$and){
-                var subConditions = this._prepareWhereCondition(columns, andPart, table, params) ;
+                var subConditions = this._prepareWhereCondition(columns, andPart, table, params, alias) ;
                 subWheres.push(subConditions.where.join(" AND ")) ;
             }
             where.push("("+subWheres.map((w)=>{ return "("+w+")" ;}).join(" AND ")+")") ;
@@ -967,10 +976,10 @@ class VeloxDbPgClient {
             }
 
             let columns = schema[table].columns ;
-
+            let params = [] ;
             let selectFrom = null;
             try{
-                selectFrom = this._createFromWithJoin(table, joinFetch, schema) ;
+                selectFrom = this._createFromWithJoin(table, joinFetch, params, schema) ;
             }catch(e){
                 return callback(e) ;
             }
@@ -978,7 +987,7 @@ class VeloxDbPgClient {
             let from = selectFrom.from ;
             let aliases = selectFrom.aliases;
             try {
-                var {where, params} = this._prepareWhereCondition(columns, search, table) ;
+                var {where, _} = this._prepareWhereCondition(columns, search, table, params) ;
             }catch(e){
                 callback(e) ;
             }
@@ -1002,7 +1011,7 @@ class VeloxDbPgClient {
                 //there is order by clause in join fetch, force add the pk in order by
                 let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
                 if(!pkNames){ callback("No PK defined for table "+table) ;}
-                orderByItems = [pkNames].concat(orderByItems) ;
+                orderByItems = orderByItems.concat([pkNames]) ;
             }
 
 
