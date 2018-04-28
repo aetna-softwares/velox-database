@@ -871,21 +871,21 @@ class VeloxDbPgClient {
                         params.push(v) ;
                         wVals.push("$"+params.length) ;
                     }
-                    where.push(alias+"."+c.name+" "+ope+" ("+wVals.join(",")+")") ;
+                    where.push(alias+".\""+c.name+"\" "+ope+" ("+wVals.join(",")+")") ;
                 } else if (ope.toUpperCase() === "BETWEEN"){
                     if(!Array.isArray(value) || value.length !== 2){
                         throw ("Search in table "+table+" failed. Search operand BETWEEN provided with wrong value. Expected an array with 2 values") ;
                     }
                     params.push(value[0]) ;
                     params.push(value[1]) ;
-                    where.push(alias+"."+c.name+" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
+                    where.push(alias+".\""+c.name+"\" BETWEEN $"+(params.length-1)+" AND $"+params.length) ;
                 } else {
                     //simple value ope
                     if(ope === "=" && value === null){
-                        where.push(alias+"."+c.name+" IS NULL") ;
+                        where.push(alias+".\""+c.name+"\" IS NULL") ;
                     }else{
                         params.push(value) ;
-                        where.push(alias+"."+c.name+" "+ope+" $"+params.length) ;
+                        where.push(alias+".\""+c.name+"\" "+ope+" $"+params.length) ;
                     }
                 }
             }
