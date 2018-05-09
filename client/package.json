@@ -1,0 +1,24 @@
+{
+    "name": "velox-database-client",
+    "version": "0.0.1",
+    "description": "Velox database client",
+    "directories": {
+      "test": "tests"
+    },
+    "scripts": {
+      "test": "echo \"Run in browser\" && exit 1"
+    },
+    "repository": {
+      "type": "git",
+      "url": "git+https://github.com/aetna-softwares/velox-database.git"
+    },
+    "author": "Aetna Softwares <contact@aetna-softwares.com>",
+    "license": "MIT",
+    "bugs": {
+      "url": "https://github.com/aetna-softwares/velox-database/issues"
+    },
+    "homepage": "https://github.com/aetna-softwares/velox-database#readme",
+    "devDependencies": {
+    }
+  }
+  
