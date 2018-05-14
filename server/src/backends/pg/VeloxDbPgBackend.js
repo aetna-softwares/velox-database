@@ -663,7 +663,7 @@ class VeloxDbPgClient {
             }
 
 
-            let sql = `INSERT INTO ${table}(${cols.map((c)=>{ return '"'+c+'"'}).join(",")}) VALUES ${values.join(",")} RETURNING *` ;
+            let sql = `INSERT INTO ${table}(${cols.map((c)=>{ return '"'+c+'"' ;}).join(",")}) VALUES ${values.join(",")} RETURNING *` ;
 
             this._queryFirst(sql, params, callback) ;
         }) ;
