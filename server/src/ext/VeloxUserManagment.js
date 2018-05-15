@@ -115,7 +115,7 @@ class VeloxUserManagment{
         this.adminProfile = options.adminProfile || null ;
         this.defaultRealms = options.defaultRealms || null ;
         this.adminUser = options.adminUser || {login: "admin", password: "admin", name: "Administrator", auth_type: "password"} ;
-        this.anonymousUser = options.anonymousUser;
+        this.anonymousUser = options.anonymousUser || {login: "anonymous", name: "Anonymous", profile_code: "ANONYMOUS"};
         this.useProfile = options.useProfile ;
         if(this.useProfile === undefined){
             if(this.adminProfile || this.fixedProfiles){
@@ -383,8 +383,13 @@ class VeloxUserManagment{
                     } ;
                 }else if(options.privateUrls){
                     //everything public except private URLS accessible to connected user
-                    checkUrl = function(logged, url){ 
-                        if(logged){ return true ; } //user is connected
+                    checkUrl = function(logged, url, user){ 
+                        if(logged && //is logged
+                            (
+                                !globalOptions.anonymousUser //no anonymous defined
+                                || user.login !== globalOptions.anonymousUser.login //anonymous defined and user is not anonymous
+                            )
+                        ){ return true ; } //user is connected
 
                         return options.privateUrls.every(function(privateUrl){
                             if(url.indexOf(privateUrl) === 0){
@@ -395,8 +400,13 @@ class VeloxUserManagment{
                     } ;
                 } else if(options.publicUrls){
                     //everything only accessible to connected user except public URLS
-                    checkUrl = function(logged, url){ 
-                        if(logged){ return true ; } //user is connected
+                    checkUrl = function(logged, url, user){ 
+                        if(logged && //is logged
+                            (
+                                !globalOptions.anonymousUser //no anonymous defined
+                                || user.login !== globalOptions.anonymousUser.login //anonymous defined and user is not anonymous
+                            )
+                        ){ return true ; } //user is connected
 
                         return options.publicUrls.some(function(publicUrl){
                             if(url.indexOf(publicUrl) === 0){
