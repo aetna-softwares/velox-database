@@ -543,7 +543,7 @@
                     if(!tables){
                         //no table give, add all offline tables
                         tables = Object.keys(this.schema).filter(function(tableName){
-                            return isOffline(tableName) ;
+                            return tableName !== "__version" && isOffline(tableName) ;
                         }) ;
 
                         //case of view that is composed by many table, must sync if any of used tables is modified
