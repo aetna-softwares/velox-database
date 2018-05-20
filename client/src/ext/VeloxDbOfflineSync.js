@@ -378,7 +378,7 @@
 
     extension.extendsObj.searchFirst = function (table, search, joinFetch, orderBy, callback) {
         doOperation(this, "searchFirst", arguments, function(done){
-            storage.searchFirst(table, joinFetch, search, orderBy, done);
+            storage.searchFirst(table, search, joinFetch, orderBy, done);
         }, callback) ;
     };
     
