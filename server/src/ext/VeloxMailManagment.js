@@ -169,9 +169,12 @@ class VeloxMailManagment{
                     if(err){ return done(err) ;}
                     let job = new AsyncJob(AsyncJob.SERIES) ;
                     for(let mail of mails){
-                        job.push((cb)=>{
-                            this.sendAMail(client, mail, cb) ;
-                        }) ;
+                        console.log("schedule_date ??",  mail.schedule_date , new Date()) ;
+                        if(!mail.schedule_date || mail.schedule_date < new Date()){
+                            job.push((cb)=>{
+                                this.sendAMail(client, mail, cb) ;
+                            }) ;
+                        }
                     }
                     job.async(done) ;
                 }) ;
@@ -244,10 +247,11 @@ class VeloxMailManagment{
             "from_addr VARCHAR(128)",
             "to_addr VARCHAR(128)",
             "subject VARCHAR(128)",
-            "text VARCHAR(1024)",
-            "html VARCHAR(1024)",
+            "text TEXT",
+            "html TEXT",
             "status VARCHAR(20)",
             "schedule_type VARCHAR(20)",
+            "schedule_date timestamp without time zone",
             "server_uid VARCHAR(50) REFERENCES velox_mail_smtp_server(uid)",
             "message_id VARCHAR(128)",
             "accepted VARCHAR(128)",
