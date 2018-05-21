@@ -27,7 +27,7 @@
     VeloxCrashReportClient.prototype.init = function(client, callback){
         //add save api entry
         var saveEndPoint = client.options.saveEndPoint || "saveCrashReport" ;
-        var ajaxSave = client._createEndPointFunction(saveEndPoint , "POST", [ "report"]) ;
+        var ajaxSave = client._createEndPointFunction(saveEndPoint , "POST","json" ,[ "report"]) ;
         var saveFun = function(report, callback, callbackProgress){
             var xhrUpload = ajaxSave.bind(client)(report, callback) ;
             if(callbackProgress){
