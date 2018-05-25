@@ -558,7 +558,7 @@ class VeloxUserManagment{
                 });
                 app.post(options.changePasswordEndPoint || "/changeUserPassword",
                     (req, res) => {
-                        this.db.changePassword(req.user.uid, req.body.oldPassword, req.body.newPassword, (err, user)=>{
+                        this.db.changeUserPassword(req.user.uid, req.body.oldPassword, req.body.newPassword, (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
