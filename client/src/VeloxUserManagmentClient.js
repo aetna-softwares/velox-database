@@ -20,6 +20,7 @@
      * @property {string} [refreshEndPoint] the refresh user entry point (default: refreshUser)
      * @property {string} [createEndPoint] the refresh user entry point (default: createUser)
      * @property {string} [logoutEndPoint] the auth entry point (default: logout)
+     * @property {string} [changePasswordEndPoint] the auth entry point (default: changeUserPassword)
      * @property {string} [localStorageUserKey] the local storage key to store current user (default: velox_current_user)
      */
 
@@ -70,6 +71,18 @@
             }.bind(client)) ;
         } ;
         client._registerEndPointFunction(activateEndPoint, activateFun) ;
+       
+        var changePasswordEndPoint = client.options.changePasswordEndPoint || "changeUserPassword" ;
+        var ajaxChangePassword = client._createEndPointFunction(changePasswordEndPoint , "POST", [ "oldPassword", "newPassword" ]) ;
+        var changePasswordFun = function(oldPassword, newPassword, callback){
+            ajaxChangePassword.bind(client)(oldPassword, newPassword, function(err, success){
+                if(err){
+                    return callback(err) ;
+                }
+                callback(null, success) ;
+            }.bind(client)) ;
+        } ;
+        client._registerEndPointFunction(changePasswordEndPoint, changePasswordFun) ;
         
         //add auth api entry
         var googleAuthEndPoint = client.options.googleAuthEndPoint || "auth/google" ;

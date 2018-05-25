@@ -89,6 +89,7 @@ class VeloxUserManagment{
      * @property {string} [logoutEndPoint] the logout end point (default : "/logout")
      * @property {string} [refreshEndPoint] the refresh user end point (default : "/refreshUser")
      * @property {string} [activateEndPoint] the activation user end point (default : "/activateUser")
+     * @property {string} [changePasswordEndPoint] the activation user end point (default : "/changeUserPassword")
      * @property {string} [createEndPoint] the activation user end point (default : "/createUser")
      * @property {boolean} [mustActivate] user must activate account with token (default: false)
      * @property {object} [sessionOptions] custom options for express-session
@@ -172,6 +173,10 @@ class VeloxUserManagment{
             activate : function(activationToken, password, callback){
                 //this is the VeloxDatabase object
                 self.activateUser(this, activationToken, password, callback) ;
+            },
+            changeUserPassword : function(userUid, oldPassword, newPassword, callback){
+                //this is the VeloxDatabase object
+                self.changePassword(this, userUid, oldPassword, newPassword, callback) ;
             },
             createUser : function(user, callback){
                 //this is the VeloxDatabase object
@@ -547,6 +552,13 @@ class VeloxUserManagment{
                 app.post(options.activateEndPoint || "/activateUser",
                     (req, res) => {
                         this.db.activate(req.body.activationToken, req.body.password, (err, user)=>{
+                            if(err){ return res.status(500).json(err); }
+                            res.json(user) ;
+                        }) ;
+                });
+                app.post(options.changePasswordEndPoint || "/changeUserPassword",
+                    (req, res) => {
+                        this.db.changePassword(req.user.uid, req.body.oldPassword, req.body.newPassword, (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
@@ -1250,6 +1262,42 @@ class VeloxUserManagment{
         }
         if(!user.uid){ user.uid = uuid.v4() ; }
         client.insert("velox_user", user, callback) ;
+    }
+
+    /**
+     * Change user password
+     * 
+     * @param {VeloxDatabase} db the db access
+     * @param {string} oldPassword the current password
+     * @param {string} newPassword the new password
+     * @param {function(err, boolean)} callback called with true if succeed
+     */
+    changePassword(db, userUid, oldPassword, newPassword, callback){
+        db.transaction((client, done)=>{
+            let sql = "SELECT *, profile_code as profile FROM velox_user WHERE uid = $1 AND disabled = FALSE AND active = TRUE" ;
+            let params = [userUid];
+            client._query(sql, params, (err, results)=>{
+                if(err){ return done(err); }
+
+                if(results.rows.length === 0){
+                    return done(null, false) ;
+                }
+                var user = results.rows[0] ;
+
+                bcrypt.compare(oldPassword, user.password, (err, checkPassOk)=>{
+                    if(err){ return done(err); }
+                    if(!checkPassOk){
+                        return done(null, false) ;
+                    }
+
+                    var updateData = {password: newPassword, uid: user.uid} ;
+                    client.update("velox_user", updateData, (err, user)=>{
+                        if(err){ return done(err); }
+                        return done(null, true) ;
+                    }) ;
+                });
+            });
+        }, callback) ;
     }
 
     /**
