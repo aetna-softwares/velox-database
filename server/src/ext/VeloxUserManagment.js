@@ -116,7 +116,7 @@ class VeloxUserManagment{
         this.adminProfile = options.adminProfile || null ;
         this.defaultRealms = options.defaultRealms || null ;
         this.adminUser = options.adminUser || {login: "admin", password: "admin", name: "Administrator", auth_type: "password"} ;
-        this.anonymousUser = options.anonymousUser || {login: "anonymous", name: "Anonymous", profile_code: "ANONYMOUS"};
+        this.anonymousUser = options.anonymousUser || {login: "anonymous", name: "Anonymous"};
         this.useProfile = options.useProfile ;
         if(this.useProfile === undefined){
             if(this.adminProfile || this.fixedProfiles){
