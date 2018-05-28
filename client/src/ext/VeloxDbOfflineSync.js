@@ -1273,7 +1273,7 @@
                 recordHolder.forEach(function(r){
                     var searchJoin = {} ;
                     Object.keys(pairs).forEach(function(f){
-                        searchJoin[f] = r[pairs[f]] ;
+                        searchJoin[pairs[f]] = r[f] ;
                     }) ;
                     //console.log("START join "+table+" > "+join.otherTable+" WHERE ", searchJoin);
                     runningSearch++ ;
