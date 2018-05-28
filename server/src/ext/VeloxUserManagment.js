@@ -652,13 +652,13 @@ class VeloxUserManagment{
             } ;
             this.interceptClientQueries.push({name: "query", before: function(sql, params, callback){
                 if(!this.disableRestriction){
-                    return callback("You can't execute direct query in safe mode, you must use unsafe mode. client.unsafe((client, done)=>{ client.query('unsafe query here', done) ;}, (err)=>{ // continue here is safe mode}");
+                    return callback("You can't execute direct query in safe mode, you must use unsafe mode. client.unsafe((client, done)=>{ client.query('unsafe query here', done) ;}, (err)=>{ // continue here is safe mode}", sql);
                 }
                 callback() ;
             }}) ;
             this.interceptClientQueries.push({name: "queryFirst", before: function(sql, params, callback){
                 if(!this.disableRestriction){
-                    return callback("You can't execute direct query in safe mode, you must use unsafe mode. client.unsafe((client, done)=>{ client.queryFirst('unsafe query here', done) ;}, (err)=>{ // continue here is safe mode}") ;
+                    return callback("You can't execute direct query in safe mode, you must use unsafe mode. client.unsafe((client, done)=>{ client.queryFirst('unsafe query here', done) ;}, (err)=>{ // continue here is safe mode}", sql) ;
                 }
                 callback() ;
             }}) ;
