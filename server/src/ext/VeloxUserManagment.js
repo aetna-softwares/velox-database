@@ -143,7 +143,7 @@ class VeloxUserManagment{
         if(!this.adminUser.uid){
             this.adminUser.uid = uuid.v4() ;
         }
-        if(!this.anonymousUser.uid){
+        if(this.anonymousUser && !this.anonymousUser.uid){
             this.anonymousUser.uid = uuid.v4() ;
         }
 
