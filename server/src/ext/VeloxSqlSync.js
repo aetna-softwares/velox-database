@@ -26,6 +26,8 @@ class VeloxSqlSync{
      * @typedef VeloxSqlSyncOption
      * @type {object}
      * @property {function|Array|object} [tablesToTrack] the table to track configuration. If not given all tables are tracked.
+     * @property {string} [syncGetTimeEndPoint] the endpoint to sync time (default /syncGetTime)
+     * @property {string} [syncEndPoint] the endpoint to sync (default /sync)
      *  it can be :
      *   - a function that take the table name as argument and return true/false
      *   - an array of table to track
@@ -82,8 +84,8 @@ class VeloxSqlSync{
         this.extendsExpressConfigure = [
             function(app){
                 //this is the VeloxDatabaseExpress object
-                app.post("/syncGetTime", this.getSyncGetTimeMiddleware());
-                app.post("/sync", this.getSyncMiddleware());
+                app.post(options.syncGetTimeEndPoint||"/syncGetTime", this.getSyncGetTimeMiddleware());
+                app.post(options.syncEndPoint||"/sync", this.getSyncMiddleware());
             }
         ] ;
     }

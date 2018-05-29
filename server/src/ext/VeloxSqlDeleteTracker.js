@@ -205,61 +205,69 @@ class VeloxSqlDeleteTracker{
                 this.createSequenceIfNotExists(backend, tx, `velox_modiftrack_table_version_${table}`, (err)=>{
                     if(err){ return callback(err); }
 
-                    
-
-                    tx._query(`select kc.column_name 
-                        from  
-                            information_schema.table_constraints tc
-                            JOIN information_schema.key_column_usage kc ON kc.table_name = tc.table_name and kc.table_schema = tc.table_schema
-                            and kc.constraint_name = tc.constraint_name
-                            JOIN information_schema.tables t on tc.table_name = t.table_name
-                        where 
-                            tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1
-                        `, [table], (err, result)=>{
+                    tx._query("select column_name from information_schema.columns where table_name=$1", [table], (err, result)=>{
                         if(err){ return callback(err); }
 
-                        if(result.rows.length === 0){
-                            return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
-                        }
+                        let columns = result.rows.map((r)=>{return r.column_name;}).filter((c)=>{
+                            return c.indexOf("velox_") !== 0 ;
+                        }) ;
 
-                        let pkInOld = result.rows.map(function(pk){
-                                return "OLD."+pk.column_name ;
-                            }).join(" || '$_$' || ") ;
-
-
-                        let trig = `CREATE OR REPLACE FUNCTION func_velox_modiftrack_${table}_ondelete() RETURNS trigger AS 
-                        $$
-                            DECLARE table_version BIGINT;
-                            DECLARE found_version BIGINT;
-                            BEGIN 
-
-                            -- increment global table version
-                            SELECT nextval('velox_modiftrack_table_version_${table}') INTO table_version ;
-
-                            -- update information in global version_table
-                            SELECT version_table INTO found_version FROM velox_modif_table_version WHERE table_name = '${table}';
-                            IF NOT FOUND THEN
-                                INSERT INTO velox_modif_table_version(table_name, version_table, version_date) VALUES 
-                                ('${table}', table_version, now()) ;
-                            ELSE
-                                UPDATE velox_modif_table_version SET version_table=table_version, version_date=now() WHERE table_name='${table}' ;
-                            END IF;
-
-                            INSERT INTO velox_delete_track (version_table, delete_date, table_name, table_uid) VALUES 
-                                (table_version, now(), '${table}', ${pkInOld}) ;
-
-                            
-                            RETURN OLD;
-                        END; 
-                        $$ 
-                        LANGUAGE 'plpgsql'` ;
-                        
-                        tx._query(trig, (err)=>{
+                        tx._query(`select kc.column_name 
+                            from  
+                                information_schema.table_constraints tc
+                                JOIN information_schema.key_column_usage kc ON kc.table_name = tc.table_name and kc.table_schema = tc.table_schema
+                                and kc.constraint_name = tc.constraint_name
+                                JOIN information_schema.tables t on tc.table_name = t.table_name
+                            where 
+                                tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = $1
+                            `, [table], (err, result)=>{
                             if(err){ return callback(err); }
-                            tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondelete BEFORE DELETE ON ${table} 
-                            FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_ondelete()`, (err)=>{
+
+                            if(result.rows.length === 0){
+                                //no primary key, assume the primary key is composed of all columns
+                                result.rows = columns ;
+                                //return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
+                            }
+
+                            let pkInOld = result.rows.map(function(pk){
+                                    return "OLD."+pk.column_name ;
+                                }).join(" || '$_$' || ") ;
+
+
+                            let trig = `CREATE OR REPLACE FUNCTION func_velox_modiftrack_${table}_ondelete() RETURNS trigger AS 
+                            $$
+                                DECLARE table_version BIGINT;
+                                DECLARE found_version BIGINT;
+                                BEGIN 
+
+                                -- increment global table version
+                                SELECT nextval('velox_modiftrack_table_version_${table}') INTO table_version ;
+
+                                -- update information in global version_table
+                                SELECT version_table INTO found_version FROM velox_modif_table_version WHERE table_name = '${table}';
+                                IF NOT FOUND THEN
+                                    INSERT INTO velox_modif_table_version(table_name, version_table, version_date) VALUES 
+                                    ('${table}', table_version, now()) ;
+                                ELSE
+                                    UPDATE velox_modif_table_version SET version_table=table_version, version_date=now() WHERE table_name='${table}' ;
+                                END IF;
+
+                                INSERT INTO velox_delete_track (version_table, delete_date, table_name, table_uid) VALUES 
+                                    (table_version, now(), '${table}', ${pkInOld}) ;
+
+                                
+                                RETURN OLD;
+                            END; 
+                            $$ 
+                            LANGUAGE 'plpgsql'` ;
+                            
+                            tx._query(trig, (err)=>{
                                 if(err){ return callback(err); }
-                                callback() ;
+                                tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondelete BEFORE DELETE ON ${table} 
+                                FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_ondelete()`, (err)=>{
+                                    if(err){ return callback(err); }
+                                    callback() ;
+                                }) ;
                             }) ;
                         }) ;
                     }) ;

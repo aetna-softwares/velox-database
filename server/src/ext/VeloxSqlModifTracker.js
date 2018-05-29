@@ -358,7 +358,9 @@ class VeloxSqlModifTracker{
                             if(err){ return callback(err); }
 
                             if(result.rows.length === 0){
-                                return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
+                                //no primary key, assume the primary key is composed of all columns
+                                result.rows = columns ;
+                                //return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
                             }
 
                             let pkInOld = result.rows.map(function(pk){
