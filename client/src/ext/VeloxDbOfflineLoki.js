@@ -275,6 +275,11 @@
                     Object.keys(pairs).forEach(function(f){
                         searchJoin[pairs[f]] = r[f] ;
                     }) ;
+                    if(join.joinSearch){
+                        Object.keys(join.joinSearch).forEach(function(f){
+                            searchJoin[f] = join.joinSearch[f] ;
+                        }) ;
+                    }
                     //console.log("START join "+table+" > "+join.otherTable+" WHERE ", searchJoin);
                     
                     var result = this.search(join.otherTable, searchJoin, join.joins, null, 0, limit);
