@@ -633,7 +633,7 @@ class VeloxDbPgClient {
      */
     insert(table, records, callback){
         if(!records) { return callback("Try to insert null record in table "+table) ; }
-        this.getColumnsDefinition(table, (err, columns)=>{
+        this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
 
             let cols = [];
@@ -642,10 +642,10 @@ class VeloxDbPgClient {
             if(!Array.isArray(records)){
                 records = [records] ;
             }
-            for(let c of columns){
+            for(let c of schema[table].columns){
                 for(let r of records){
-                    if(r[c.column_name] !== undefined){
-                        cols.push(c.column_name) ;
+                    if(r[c.name] !== undefined){
+                        cols.push(c.name) ;
                         break;
                     }
                 }
@@ -653,11 +653,27 @@ class VeloxDbPgClient {
             if(cols.length === 0){
                 return callback("Can't found any column to insert in "+table+" from record "+JSON.stringify(records)) ;
             }
+
+            var sequences = {} ;
+            if(schema[table].sequenceCols){
+                for(let sc of schema[table].sequenceCols){
+                    if(cols.indexOf(sc.col) === -1){
+                        cols.push(sc.col) ;
+                    }
+                    sequences[sc.col] = sc.sequence;
+                }
+            }
+
             for(let record of records){
                 var valuesCols = [] ;
                 for(let c of cols){
-                    params.push(record[c]) ;
-                    valuesCols.push("$"+params.length) ;
+                    if(sequences[c] && record[c] === undefined){
+                        //this column is a sequence and is not given
+                        valuesCols.push("nextval('"+sequences[c]+"')") ;
+                    }else{
+                        params.push(record[c]) ;
+                        valuesCols.push("$"+params.length) ;
+                    }
                 }
                 values.push(`(${valuesCols.join(",")})`);
             }
