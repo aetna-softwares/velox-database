@@ -6,26 +6,29 @@ const DB_VERSION_TABLE = "velox_db_version" ;
 
 function extendsSchema(schemaBase, schemaExtends){
     Object.keys(schemaExtends).forEach(function(table){
-        if(schemaBase[table] && schemaExtends[table].columns){
-            schemaExtends[table].columns.forEach(function(col){
-                var found = schemaBase[table].columns.some(function(colBase){
-                    if(colBase.name === col.name){
-                        Object.keys(col).forEach(function(k){
-                            colBase[k] = col[k] ;
-                        }) ;
-                        return true ;
+        if(schemaBase[table]){
+            if(schemaExtends[table].columns){
+                schemaExtends[table].columns.forEach(function(col){
+                    var found = schemaBase[table].columns.some(function(colBase){
+                        if(colBase.name === col.name){
+                            Object.keys(col).forEach(function(k){
+                                colBase[k] = col[k] ;
+                            }) ;
+                            return true ;
+                        }
+                    }) ;
+                    if(!found){
+                        schemaBase[table].columns.push(col) ;
                     }
                 }) ;
-                if(!found){
-                    schemaBase[table].columns.push(col) ;
+            }
+            Object.keys(schemaExtends[table]).forEach(function(k){
+                if(!schemaBase[table][k] || (Array.isArray(schemaBase[table][k]) && schemaBase[table][k].length === 0 )) {
+                    schemaBase[table][k] = schemaExtends[table][k] ;
                 }
             }) ;
+            
         }
-        Object.keys(schemaExtends[table]).forEach(function(k){
-            if(!schemaBase[table][k] || (Array.isArray(schemaBase[table][k]) && schemaBase[table][k].length === 0 )) {
-                schemaBase[table][k] = schemaExtends[table][k] ;
-            }
-        }) ;
     }) ;
 }
 
