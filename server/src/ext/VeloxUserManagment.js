@@ -1123,6 +1123,10 @@ class VeloxUserManagment{
             //search profile to use
             this._queryFirst("SELECT profile_code FROM velox_link_user_realm WHERE user_uid = $1 LIMIT 1", [this.context.req.user.uid], (err, profile)=>{
                 if(err){ return callback(err) ;}
+                if(!profile){
+                    //no existing link, this user is probably not restricted to realm
+                    return callback() ;
+                }
                 //don't use insert on purpose to avoid right check that will say that this user does not belong to this realm
                 this._query("INSERT INTO velox_link_user_realm(user_uid, realm_code, profile_code) VALUES ($1, $2, $3)", [this.context.req.user.uid, realm.code, profile.profile_code], callback) ;
             }) ;
