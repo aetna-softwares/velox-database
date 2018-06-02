@@ -6,31 +6,26 @@ const DB_VERSION_TABLE = "velox_db_version" ;
 
 function extendsSchema(schemaBase, schemaExtends){
     Object.keys(schemaExtends).forEach(function(table){
-        if(!schemaBase[table]){
-            schemaBase[table] = schemaExtends[table] ;
-        }else{
-            if(schemaExtends[table].columns){
-                schemaExtends[table].columns.forEach(function(col){
-                    var found = schemaBase[table].columns.some(function(colBase){
-                        if(colBase.name === col.name){
-                            Object.keys(col).forEach(function(k){
-                                colBase[k] = col[k] ;
-                            }) ;
-                            return true ;
-                        }
-                    }) ;
-                    if(!found){
-                        schemaBase[table].columns.push(col) ;
+        if(schemaBase[table] && schemaExtends[table].columns){
+            schemaExtends[table].columns.forEach(function(col){
+                var found = schemaBase[table].columns.some(function(colBase){
+                    if(colBase.name === col.name){
+                        Object.keys(col).forEach(function(k){
+                            colBase[k] = col[k] ;
+                        }) ;
+                        return true ;
                     }
                 }) ;
-            }
-            Object.keys(schemaExtends[table]).forEach(function(k){
-                if(!schemaBase[table][k] || (Array.isArray(schemaBase[table][k]) && schemaBase[table][k].length === 0 )) {
-                    schemaBase[table][k] = schemaExtends[table][k] ;
+                if(!found){
+                    schemaBase[table].columns.push(col) ;
                 }
             }) ;
-            
         }
+        Object.keys(schemaExtends[table]).forEach(function(k){
+            if(!schemaBase[table][k] || (Array.isArray(schemaBase[table][k]) && schemaBase[table][k].length === 0 )) {
+                schemaBase[table][k] = schemaExtends[table][k] ;
+            }
+        }) ;
     }) ;
 }
 
@@ -1185,7 +1180,6 @@ class VeloxDbPgClient {
                             extendsSchema(schema, this.schema) ;
 
                             for(let tableName of Object.keys(schema)){
-                                console.log("pk ??"+tableName+" : "+JSON.stringify(schema[tableName])) ;
                                 if(schema[tableName].pk.length === 0){
                                     schema[tableName].pk = schema[tableName].columns.map((c)=>{return c.name ;}) ;
                                 }
