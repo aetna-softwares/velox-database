@@ -135,6 +135,7 @@ class VeloxSqlSync{
                                     //record in database is older, update
                                     change.action = "update" ;
                                     records.push(change);
+                                    cb() ;
                                 }else{
                                     //record in database is more recent, compare which column changed
         
@@ -201,6 +202,7 @@ class VeloxSqlSync{
                                                 // still some modification to do, apply them
                                                 change.action = "update" ;
                                                 records.push(change) ;
+                                                cb() ;
                                             }
                                         }) ;
                                     }) ;
