@@ -124,15 +124,27 @@
     };
 
     VeloxDbOfflineLoki.prototype.update = function (table, record, callback) {
-        //it is faster to remove object and them insert them again
-        var result = this.remove(table, record);
-        if (result.err) {  
-            if(callback) {callback(result.err); }
-            return {err: result.err} ;
+        var coll = this.getCollection(table) ;
+        var existingRecord = coll.findOne(this._pkSearch(table, record));
+        if(!existingRecord){
+            var err = "Record not exist in table "+table+" : "+JSON.stringify(record) ;
+            if(callback) {callback(err);}
+            return {err: err};
         }
-        record.velox_version_record = (record.velox_version_record || 0) + 1;
-        record.velox_version_date = new Date();
-        return this.insert(table, record, callback);
+        Object.keys(record).forEach(function(k){
+            existingRecord[k] = record[k] ;
+        }) ;
+        try {
+            existingRecord.velox_version_record++;
+            existingRecord.velox_version_date = new Date();
+            coll.update(existingRecord);
+        } catch (err) {
+            if(callback) {callback(err);}
+            return {err: err};
+        }
+        var result = this._sanatizeRecord(existingRecord) ;
+        if(callback) {callback(null, result);}
+        return {record : result} ;
     };
 
     VeloxDbOfflineLoki.prototype.remove = function (table, pkOrRecord, callback) {
