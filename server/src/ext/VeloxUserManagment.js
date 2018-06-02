@@ -742,7 +742,6 @@ class VeloxUserManagment{
                                     //don't use profile, so consider as "super admin"
                                     rule.profile = 0 ;
                                 }
-                                let authorizedLevelsOnRealm = [] ;
                                 if(rule.rights.indexOf("read") !== -1 && rule.realmRestrict){
                                     if(Array.isArray(rule.profile)){
                                         authorizedLevelsOnRealm = authorizedLevelsOnRealm.concat(rule.profile) ;
@@ -752,7 +751,6 @@ class VeloxUserManagment{
                                 }
                                 if(authorizedLevelsOnRealm.length === 0){
                                     //no authorization rule on realm, look for user
-                                    let authorizedLevelsOnUser = [] ;
                                     if(rule.rights.indexOf("read") !== -1 && rule.userRestrict){
                                         if(Array.isArray(rule.profile)){
                                             authorizedLevelsOnUser = authorizedLevelsOnUser.concat(rule.profile) ;
