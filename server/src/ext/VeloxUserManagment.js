@@ -667,7 +667,7 @@ class VeloxUserManagment{
                 if(!hiddenCols || this.disableRestriction) { return sql ;}
                 return `(SELECT *, ${hiddenCols.map((c)=>{ return " NULL AS "+c ;}).join(',')} FROM ${sql} subH)` ;
             } ;
-            var useProfile = this.options.useProfile ;
+            var useProfile = this.useProfile ;
             var useRealm = this.options.useRealm ;
             for(let table of this.options.restrictedTables){
 
