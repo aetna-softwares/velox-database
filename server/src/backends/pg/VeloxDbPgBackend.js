@@ -1185,6 +1185,7 @@ class VeloxDbPgClient {
                             extendsSchema(schema, this.schema) ;
 
                             for(let tableName of Object.keys(schema)){
+                                console.log("pk ??"+tableName+" : "+JSON.stringify(schema[tableName])) ;
                                 if(schema[tableName].pk.length === 0){
                                     schema[tableName].pk = schema[tableName].columns.map((c)=>{return c.name ;}) ;
                                 }
