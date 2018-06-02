@@ -735,6 +735,8 @@ class VeloxUserManagment{
                             }
 
                             //no full read access granted to this user, get available rules
+                            let authorizedLevelsOnRealm = [] ;
+                            let authorizedLevelsOnUser = [] ;
                             for(let rule of table.rules){
                                 if(!useProfile){
                                     //don't use profile, so consider as "super admin"
@@ -758,57 +760,54 @@ class VeloxUserManagment{
                                             authorizedLevelsOnUser.push(rule.profile) ;
                                         }
                                     }
-                                    
-                                    if(authorizedLevelsOnUser.length === 0){
-                                        //no authorization on user neither, give back fake empty table
-                                        return ` (SELECT t.* FROM ${table.name} t WHERE 0 = 1) ` ;
+                                }
+                            }
+                            if(authorizedLevelsOnRealm.length > 0){
+                                //create a sub query restricted on realm for authorized level
+                                var realmColPath = table.realmCol.split(".") ;
+                                var from = `FROM ${table.name}` ;
+                                var currentTable = table.name ;
+                                realmColPath.forEach((p, i)=>{
+                                    if(i === realmColPath.length-1){
+                                        from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
+                                        JOIN velox_user_profile p ON r.profile_code = p.code
+                                        ` ;
                                     }else{
-                                        //create a sub query restricted on user for authorized level
-                                        var userColPath = table.userCol.split(".") ;
-                                        var from = `FROM ${table.name}` ;
-                                        var currentTable = table.name ;
-                                        userColPath.forEach((p, i)=>{
-                                            if(i === userColPath.length-1){
-                                                from += ` JOIN velox_user u ON ${currentTable}.${p} = u.uid
-                                                JOIN velox_user_profile p ON u.profile_code = p.code
-                                                 ` ;
-                                            }else{
-                                                from += ` JOIN ${p} `+createJoinOnFromFk(client.cache.schema, currentTable, p) ;
-                                                currentTable = p ;
-                                            }
-                                        }) ;
-
-                                        return `(SELECT DISTINCT ${table.name}.*
-                                            FROM
-                                            ${from} 
-                                            WHERE u.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
-                                        )`;
+                                        from += ` JOIN ${p} `+createJoinOnFromFk(client.cache.schema, currentTable, p) ;
+                                        currentTable = p ;
                                     }
-                                }else{
-                                    //create a sub query restricted on realm for authorized level
-                                    var realmColPath = table.realmCol.split(".") ;
+                                }) ;
+                                return `
+                                    (SELECT DISTINCT ${table.name}.*
+                                    ${from} 
+                                    
+                                    WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")}))
+                                `;
+                            } else if (authorizedLevelsOnUser.length > 0) {
+                                    //create a sub query restricted on user for authorized level
+                                    var userColPath = table.userCol.split(".") ;
                                     var from = `FROM ${table.name}` ;
                                     var currentTable = table.name ;
-                                    realmColPath.forEach((p, i)=>{
-                                        if(i === realmColPath.length-1){
-                                            from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
-                                            JOIN velox_user_profile p ON r.profile_code = p.code
+                                    userColPath.forEach((p, i)=>{
+                                        if(i === userColPath.length-1){
+                                            from += ` JOIN velox_user u ON ${currentTable}.${p} = u.uid
+                                            JOIN velox_user_profile p ON u.profile_code = p.code
                                             ` ;
                                         }else{
                                             from += ` JOIN ${p} `+createJoinOnFromFk(client.cache.schema, currentTable, p) ;
                                             currentTable = p ;
                                         }
                                     }) ;
-                                    return `
-                                        (SELECT DISTINCT ${table.name}.*
+
+                                    return `(SELECT DISTINCT ${table.name}.*
+                                        FROM
                                         ${from} 
-                                        
-                                        WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")}))
-                                    `;
-                                }
-
+                                        WHERE u.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                    )`;
+                            } else {
+                                //no authorization on user neither, give back fake empty table
+                                return ` (SELECT t.* FROM ${table.name} t WHERE 0 = 1) ` ;
                             }
-
                         }else{
                             //no restriction rules
                             return tableFrom ;
