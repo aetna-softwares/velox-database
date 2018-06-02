@@ -768,7 +768,8 @@ class VeloxUserManagment{
                                 realmColPath.forEach((p, i)=>{
                                     if(i === realmColPath.length-1){
                                         from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
-                                        JOIN velox_user_profile p ON r.profile_code = p.code
+                                        JOIN velox_user u ON u.uid = r.user_uid
+                                        JOIN velox_user_profile p ON p.code = COALESCE(r.profile_code, u.profile_code)
                                         ` ;
                                     }else{
                                         from += ` JOIN ${p} `+createJoinOnFromFk(client.cache.schema, currentTable, p) ;
