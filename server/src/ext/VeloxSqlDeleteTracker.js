@@ -225,7 +225,7 @@ class VeloxSqlDeleteTracker{
 
                             if(result.rows.length === 0){
                                 //no primary key, assume the primary key is composed of all columns
-                                result.rows = columns ;
+                                result.rows = columns.map((c)=>{ return {column_name: c} ;}) ;
                                 //return callback("Table "+table+" doesn't have any primary key, can't use modification track") ;
                             }
 
