@@ -154,7 +154,7 @@ class VeloxSqlSync{
                     return done(null, true) ;
                 }) ;
             }) ;
-        }, function(err, shouldApplyChange){
+        }, (err, shouldApplyChange) => {
             if(err){ return callback(err) ;}
 
             if(!shouldApplyChange){ return callback() ;}
