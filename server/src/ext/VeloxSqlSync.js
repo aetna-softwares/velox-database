@@ -25,6 +25,10 @@ class VeloxSqlSync{
     /**
      * @typedef VeloxSqlSyncOption
      * @type {object}
+     * @property {string} [appName] The application name (use in error mail)
+     * @property {string} [emailAlert] Send alert by email on sync error. Possible values are : none (default if no adress given), immediate, hourly (default if adress given), daily
+     * @property {string} [emailAddressFrom] Email address to send alerts
+     * @property {string} [emailAddressTo] Email address to send alerts
      * @property {function|Array|object} [tablesToTrack] the table to track configuration. If not given all tables are tracked.
      * @property {string} [syncGetTimeEndPoint] the endpoint to sync time (default /syncGetTime)
      * @property {string} [syncEndPoint] the endpoint to sync (default /sync)
@@ -44,6 +48,26 @@ class VeloxSqlSync{
      */
     constructor(options){
         this.name = "VeloxSqlSync";
+
+
+        this.appName = options.appName ;
+        
+        this.emailAddressFrom = options.emailAddressFrom ;
+        this.emailAddressTo = options.emailAddressTo ;
+
+        if(options.emailAddressTo){
+            this.emailAlert = options.emailAlert||"hourly" ;
+        }else{
+            this.emailAlert = options.emailAlert||"none" ;
+        }
+
+        if(this.emailAlert !== "none" && !this.emailAddressFrom){
+            throw "You must give a sender address email" ;
+        }
+        if(this.emailAlert !== "none" && !this.emailAddressTo){
+            throw "You must give a destination address email" ;
+        }
+
         this.dependencies = [
             new VeloxSqlModifTracker(options),
             new VeloxSqlDeleteTracker(options)
@@ -246,7 +270,54 @@ class VeloxSqlSync{
                     if(err){
                         //something went wrong during sync apply, don't error on client side but update the log table
                         db.transaction((tx, done)=>{
-                            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(err)}, done) ;
+                            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(err)}, (err)=>{
+                                if(err){ return done(err) ;}
+                                if(this.emailAlert !== "none"){
+                                    var email = {
+                                        uid: changeSet.uid,
+                                        from_addr: this.emailAddressFrom,
+                                        to_addr: this.emailAddressTo,
+                                        subject: "["+this.appName+"] Sync error report",
+                                        text: "The following errors happens :\n\n",
+                                        html: "The following errors happens :<br /><br />",
+                                    };
+                                    if(this.emailAlert === "immediate"){
+                                        email.schedule_type = "now";
+                                        email.status = "tosend";
+                                    }else if(this.emailAlert === "hourly"){
+                                        email.schedule_type = "later";
+                                        email.status = "tosend";
+                                        var now = new Date() ;
+                                        email.schedule_date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()+1, 0, 0, 0);
+                                    }else if(this.emailAlert === "daily"){
+                                        email.schedule_type = "later";
+                                        email.status = "tosend";
+                                        var now = new Date() ;
+                                        email.schedule_date = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0, 0, 0, 0);
+                                    }
+                                    tx.searchFirst("velox_mail", {status: "tosend", subject: email.subject}, (err, foundEmail)=>{
+                                        if(err){ return done(err) ;}
+                                        if(foundEmail){
+                                            email = foundEmail ;
+                                        }
+                
+                                        email.text += "----------------------------------\n" ;
+                                        email.text += "Date : "+new Date()+"\n";
+                                        email.text += "Error : "+JSON.stringify(err)+"\n";
+                                        email.text += "----------------------------------\n" ;
+                                        email.html = email.text.remplace(/\n/g, "<br />") ;
+                
+                                        if(foundEmail){
+                                            tx.update("velox_mail", email, done) ;
+                                        }else{
+                                            tx.insert("velox_mail", email, done) ;
+                                        }
+                                    }) ;
+                                }else{
+                                    //no email alert
+                                    done() ;
+                                }
+                            }) ;
                         }, (err)=>{
                             if(err){ return callback(err) ;}
                             //tell client that he should refresh the table !

@@ -592,7 +592,7 @@
                     if(!tables){
                         //no table give, add all offline tables
                         tables = Object.keys(this.schema).filter(function(tableName){
-                            return tableName !== "__version" && isOffline(tableName) ;
+                            return tableName !== "__version" && tableName !== "velox_sync_log" && isOffline(tableName) ;
                         }) ;
 
                         //case of view that is composed by many table, must sync if any of used tables is modified
@@ -641,7 +641,8 @@
                                 }
                                 return (
                                     !distantVersion || //case when distant version number is unknown, should sync for safety
-                                    !localVersion ||   //case when locale version is unkown, never seen
+                                    !localVersion ||   //case when local version is unkown, never seen
+                                    tableToForceRefresh[table] || //case when refresh is forced
                                     localVersion < distantVersion //case when distant version higher
                                 ) ;
                             }) ;
