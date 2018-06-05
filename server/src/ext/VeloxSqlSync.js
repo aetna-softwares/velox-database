@@ -266,11 +266,11 @@ class VeloxSqlSync{
                 if(err){ return callback(err) ;}
                 //at the end of transaction, update the sync log to done
                 records.push({ action : "update", table: "velox_sync_log", record: {uid: changeSet.uuid, status: 'done'}}) ;
-                db.transactionalChanges(records, (err)=>{
-                    if(err){
+                db.transactionalChanges(records, (errChange)=>{
+                    if(errChange){
                         //something went wrong during sync apply, don't error on client side but update the log table
                         db.transaction((tx, done)=>{
-                            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(err)}, (err)=>{
+                            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(errChange)}, (err)=>{
                                 if(err){ return done(err) ;}
                                 if(this.emailAlert !== "none"){
                                     var email = {
@@ -303,7 +303,7 @@ class VeloxSqlSync{
                 
                                         email.text += "----------------------------------\n" ;
                                         email.text += "Date : "+new Date()+"\n";
-                                        email.text += "Error : "+JSON.stringify(err)+"\n";
+                                        email.text += "Error : "+JSON.stringify(errChange)+"\n";
                                         email.text += "----------------------------------\n" ;
                                         email.html = email.text.replace(/\n/g, "<br />") ;
                 
