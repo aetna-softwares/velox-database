@@ -1036,29 +1036,37 @@ class VeloxUserManagment{
     beforeCheckUserRealmAllowed(table, record, callback){
         if(this.context && this.context.req && this.context.req.user){
             //check current user is allowed on this realm
-            this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid}, (err, currentUserRealms)=>{
+            this.search("velox_user_profile", {code : this.context.req.user.profile_code}, (err, userProfile)=>{
                 if(err){ return callback(err) ;}
-                let thisRealmLine = null;
-                currentUserRealms.some((r)=>{
-                    if(r.realm_code === record.realm_code){
-                        thisRealmLine = r;
-                        return true ;
-                    }
-                }) ;
-                if(!thisRealmLine){
-                    return callback("You are not allowed on realm "+record.realm_code) ;
+                if(userProfile && userProfile.full_realm_access){
+                    //this user has a profile with full realm access, skip further tests
+                    return callback() ;
                 }
-                if(!record.profile_code){ return callback() ;}
 
-                //check current user has profile higher or equal to requested profile
-                this.searchFirst("velox_user_profile", {code : thisRealmLine.profile_code}, (err, currentUserProfile)=>{
+                this.search("velox_link_user_realm", {user_uid : this.context.req.user.uid}, (err, currentUserRealms)=>{
                     if(err){ return callback(err) ;}
-                    this.searchFirst("velox_user_profile", {code : record.profile_code}, (err, askedUserProfile)=>{
-                        if(err){ return callback(err) ;}
-                        if(currentUserProfile.level > askedUserProfile.level){
-                            return callback("You don't have access to profile "+askedUserProfile.code) ;
+                    let thisRealmLine = null;
+                    currentUserRealms.some((r)=>{
+                        if(r.realm_code === record.realm_code){
+                            thisRealmLine = r;
+                            return true ;
                         }
-                        callback() ;
+                    }) ;
+                    if(!thisRealmLine){
+                        return callback("You are not allowed on realm "+record.realm_code) ;
+                    }
+                    if(!record.profile_code){ return callback() ;}
+
+                    //check current user has profile higher or equal to requested profile
+                    this.searchFirst("velox_user_profile", {code : thisRealmLine.profile_code}, (err, currentUserProfile)=>{
+                        if(err){ return callback(err) ;}
+                        this.searchFirst("velox_user_profile", {code : record.profile_code}, (err, askedUserProfile)=>{
+                            if(err){ return callback(err) ;}
+                            if(currentUserProfile.level > askedUserProfile.level){
+                                return callback("You don't have access to profile "+askedUserProfile.code) ;
+                            }
+                            callback() ;
+                        }) ;
                     }) ;
                 }) ;
             }) ;
@@ -1535,6 +1543,7 @@ class VeloxUserManagment{
         let lines = [
             "code VARCHAR(30) PRIMARY KEY",
             "level INT",
+            "full_realm_access BOOLEAN",
             "name VARCHAR(75)"
         ].concat(metaLines) ;
         if(backend === "pg"){
