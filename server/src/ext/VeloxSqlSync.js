@@ -216,6 +216,8 @@ class VeloxSqlSync{
                                                 //no modifications to do, no need to go further
                                                 return cb() ;
                                             }
+
+
                 
                                             client.getPrimaryKey(change.table, (err, pkNames)=>{
                                                 if(err){ return cb(err); }
@@ -261,6 +263,39 @@ class VeloxSqlSync{
                                                             }
                                                         }
                                                     }
+
+                                                    if(change.action === "insert"){
+                                                        //case of conflicting insert, check diff on row time
+                                                        let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
+
+                                                        changedColumns.forEach((changedCol, index)=>{
+                                                            if(modifDateMilli <= changeDateTimestampMilli){
+                                                                //the modif date is older that our new modification
+                                                                //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
+                                                            }else{
+                                                                //the modif date is newer, we won't change in the table but we must modify the modif track
+                                                                // from oldval -> dbVal to oldval -> myVal -> dbVal
+                                                                let oldestVal = ""+change.record[changedCol] ;
+                                                                let newVal = "" + recordDb[changedCol] ;  
+                                                                
+                                                                //insert modif track
+                                                                records.push({table : "velox_modif_track", action: "insert", record: {
+                                                                    version_date : new Date(changeDateTimestampMilli),
+                                                                    column_before : oldestVal,
+                                                                    column_after : newVal,
+                                                                    version_user : change.record.velox_version_user,
+                                                                    version_table : recordDb.version_table
+                                                                }});
+                
+                                                                //remove from changed column
+                                                                changedColumns.splice(index, 1) ;
+                                                                //remove column from record
+                                                                delete change.record[changedCol] ;
+                                                            }
+                                                        }) ;
+                                                    }
+
+
                 
                                                         
                                                     if(changedColumns.length === 0){
