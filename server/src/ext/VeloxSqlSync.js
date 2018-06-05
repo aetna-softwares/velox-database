@@ -273,8 +273,7 @@ class VeloxSqlSync{
                                                                 //the modif date is older that our new modification
                                                                 //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
                                                             }else{
-                                                                //the modif date is newer, we won't change in the table but we must modify the modif track
-                                                                // from oldval -> dbVal to oldval -> myVal -> dbVal
+                                                                //the modif date is newer, we won't change in the table but we must insert the modif track
                                                                 let oldestVal = ""+change.record[changedCol] ;
                                                                 let newVal = "" + recordDb[changedCol] ;  
                                                                 
@@ -283,7 +282,7 @@ class VeloxSqlSync{
                                                                     version_date : new Date(changeDateTimestampMilli),
                                                                     column_before : oldestVal,
                                                                     column_after : newVal,
-                                                                    version_user : change.record.velox_version_user,
+                                                                    version_user : recordDb.velox_version_user,
                                                                     version_table : recordDb.version_table
                                                                 }});
                 
