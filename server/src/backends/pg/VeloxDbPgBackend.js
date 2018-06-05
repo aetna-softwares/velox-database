@@ -792,12 +792,13 @@ class VeloxDbPgClient {
                 if(!joinFetch){
                     return callback(null, result.rows) ;
                 }
+                let records = null;
                 try{
-                    let records = this.constructResults(schema, table,  aliases, result.rows, joinFetch) ;
-                    callback(null, records) ;
+                    records = this.constructResults(schema, table,  aliases, result.rows, joinFetch) ;
                 }catch(err){
                     return callback(err) ;
                 }
+                callback(null, records) ;
 
                 
             }) ;

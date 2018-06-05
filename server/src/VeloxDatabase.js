@@ -393,10 +393,10 @@ class VeloxDatabase {
                 if(interceptor.length === args.length){
                     try{
                         interceptor.apply(client, args) ;
-                        callback() ;
                     }catch(err){
-                        callback(err) ;
+                        return callback(err) ;
                     }
+                    callback() ;
                 }else{
                     interceptor.apply(client, args.concat([callback])) ;
                 }

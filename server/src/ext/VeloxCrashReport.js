@@ -149,7 +149,7 @@ class VeloxCrashReport{
                         email.text += "Date : "+record.date+"\n";
                         email.text += "Error : "+record.error+"\n";
                         email.text += "----------------------------------\n" ;
-                        email.html = email.text.remplace(/\n/g, "<br />") ;
+                        email.html = email.text.replace(/\n/g, "<br />") ;
 
                         if(foundEmail){
                             client.update("velox_mail", email, done) ;

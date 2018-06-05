@@ -305,7 +305,7 @@ class VeloxSqlSync{
                                         email.text += "Date : "+new Date()+"\n";
                                         email.text += "Error : "+JSON.stringify(err)+"\n";
                                         email.text += "----------------------------------\n" ;
-                                        email.html = email.text.remplace(/\n/g, "<br />") ;
+                                        email.html = email.text.replace(/\n/g, "<br />") ;
                 
                                         if(foundEmail){
                                             tx.update("velox_mail", email, done) ;
