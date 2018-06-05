@@ -36,6 +36,8 @@
             this.dbEntryPoint = this.dbEntryPoint+"/" ;
         }
 
+        
+
         //add extension features
         VeloxDatabaseClient.extensions.forEach(function(extension){
             if(extension.extendsObj){
@@ -56,7 +58,7 @@
             this.schema = schema;
 
             //add db api entry
-            var dbApi = {} ;
+            var dbApi = this ;
             var dbApiPath = this.dbEntryPoint.split("/").filter(function(p){ return !!p.trim() ;}) ;
             var currentParent = client;
             dbApiPath.forEach(function(p, i){
@@ -97,22 +99,7 @@
                 }.bind(this) ;
             }.bind(this)) ;
 
-            //add global features
-            dbApi.transactionalChanges = function(changeSet, callback){
-                this.transactionalChanges(changeSet, callback) ;
-            }.bind(this) ;
-            dbApi.multiread = function(reads, callback){
-                this.multiread(reads, callback) ;
-            }.bind(this) ;
-            dbApi.getSchema = dbApi.schema = function( callback){
-                this.getSchema( callback) ;
-            }.bind(this) ;
-            dbApi.sync = function(tables, callback){
-                this.sync(tables, callback) ;
-            }.bind(this) ;
-            dbApi.syncSchema = function(callback){
-                this.syncSchema(callback) ;
-            }.bind(this) ;
+            
 
 
             callback() ;

@@ -76,14 +76,16 @@ class VeloxSqlSync{
         this.extendsProto = {
             syncChangeSet : function(changeSet, callback){
                 //this is the VeloxDatabase object
-                self.applyChangeSet(this.backend, changeSet, callback) ;
+                self.applyChangeSet(this.backend, changeSet, {}, callback) ;
             }
         } ;
         this.extendsExpressProto = {
             getSyncMiddleware: function(){
                 return (req, res)=>{
                     let changes = req.body.changes;
-                    self.applyChangeSet(this.db, changes, (err, result)=>{
+                    let context = {} ;
+                    this._setContext(context, req) ;
+                    self.applyChangeSet(this.db, changes,context,(err, result)=>{
                         if (err) {
                             this.db.logger.error("sync failed : "+ err, changes);
                             return res.status(500).json(err);
@@ -129,7 +131,7 @@ class VeloxSqlSync{
      * @param {object} changeSet the changeset to sync in database
      * @param {function(Error)} callback called on finished
      */
-    applyChangeSet(db, changeSet, callback){
+    applyChangeSet(db, changeSet, context, callback){
 
         var records = [] ;
         
@@ -137,6 +139,7 @@ class VeloxSqlSync{
         let localTimeGap = changeSet.timeLapse ;
         changeDateTimestampMilli += localTimeGap ;
         db.transaction((tx, done)=>{
+            tx.context = context.context ;
             tx.getByPk("velox_sync_log", changeSet.uuid, (err, existingLog)=>{
                 if(err){ return done(err) ;}
                 if(existingLog){
@@ -161,6 +164,7 @@ class VeloxSqlSync{
 
             let job = new AsyncJob(AsyncJob.SERIES) ;
             db.inDatabase((client, done)=>{
+                client.context = context.context ;
                 for(let change of changeSet.changes){
                     job.push((cb)=>{
                         if(change.action === "remove" || change.action === "removeWhere"){
@@ -266,7 +270,10 @@ class VeloxSqlSync{
                 if(err){ return callback(err) ;}
                 //at the end of transaction, update the sync log to done
                 records.push({ action : "update", table: "velox_sync_log", record: {uid: changeSet.uuid, status: 'done'}}) ;
-                db.transactionalChanges(records, (errChange)=>{
+                this.db.transaction((tx, done)=>{
+                    tx.context = context.context ;
+                    tx.changes(records, done) ;
+                }, (errChange)=>{
                     if(errChange){
                         //something went wrong during sync apply, don't error on client side but update the log table
                         db.transaction((tx, done)=>{

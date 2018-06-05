@@ -563,6 +563,10 @@
         }.bind(this));
     };
 
+    extension.extendsProto.getTablesToRefresh = function(){
+        return tableToForceRefresh ;
+    } ;
+
     var syncing = false;
     /**
      * Sync data with distant server.

@@ -19,7 +19,7 @@
     },
     "homepage": "https://github.com/aetna-softwares/velox-database#readme",
     "dependencies": {
-      "bcrypt": "^1.0.2",
+      "bcrypt": "2.0.1",
       "body-parser": "^1.17.2",
       "express-session": "^1.15.5",
       "fs-extra": "^4.0.1",
