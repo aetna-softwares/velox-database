@@ -102,14 +102,34 @@
      * Sync strategy "always sync" : do sync before and after each operation
      */
     extension.extendsGlobal.SYNC_STRATEGY_ALWAYS = {
-        before: function(callback){
-            this.sync(function(err){
+        before: function(context, callback){
+            if(context.action === "insert" || context.action === "update" || context.action === "transactionalChanges"){
+                return callback() ;
+            }
+            var tables = [context.args[0]] ;
+            if(context.action === "multiread"){
+                tables = Object.keys(context.args[0]).map(function(k){
+                    return context.args[0][k].table||k ;
+                }) ;
+            }
+            this.sync(tables, function(err){
                 if(err){ console.info("Sync failed, assume offline", err); }
                 callback() ;
             }) ;
         },
-        after: function(callback){
-            this.sync(function(err){
+        after: function(context, callback){
+            if(context.action !== "insert" &&  context.action !== "update" && context.action !== "transactionalChanges"){
+                return callback() ;
+            }
+            var tables = [context.args[0]] ;
+            if(context.action === "transactionalChanges"){
+                tables = context.args[0].map(function(record){
+                    return record.table ;
+                }).filter(function(item, pos, self) {
+                    return self.indexOf(item) == pos;
+                }) ;
+            }
+            this.sync(tables, function(err){
                 if(err){ console.info("Sync failed, assume offline", err); }
                 callback() ;
             }) ;
@@ -121,15 +141,15 @@
      * You must manage sync in your code
      */
     extension.extendsGlobal.SYNC_STRATEGY_MANUAL = {
-        before: function(callback){ callback() ;},
-        after: function(callback){ callback() ;}
+        before: function(context, callback){ callback() ;},
+        after: function(context, callback){ callback() ;}
     } ;
     
     /**
      * Do a sync on first operation and each 20sec
      */
     extension.extendsGlobal.SYNC_STRATEGY_AUTO = {
-        before: function(callback){ 
+        before: function(context, callback){ 
             if(!this.lastSyncDate || new Date().getTime() - this.lastSyncDate.getTime() > 20000){
                 //if not yet sync or sync more than 20s ago, sync again
                 if(this.syncAutoTimeoutId){
@@ -145,7 +165,7 @@
                 callback() ;
             }
         },
-        after: function(callback){
+        after: function(context, callback){
             if(this.syncAutoTimeoutId){
                 //if there is a planned sync, cancel it
                 clearTimeout(this.syncAutoTimeoutId) ;
@@ -158,7 +178,7 @@
         }
     } ;
 
-    var syncStrategy = extension.extendsGlobal.SYNC_STRATEGY_AUTO ;
+    var syncStrategy = extension.extendsGlobal.SYNC_STRATEGY_ALWAYS ;
 
 
     /**
@@ -169,7 +189,7 @@
      */
 
     /**
-     * Set the sync strategy (default is the SYNC_STRATEGY_AUTO)
+     * Set the sync strategy (default is the SYNC_STRATEGY_ALWAYS)
      * 
      * You can use VeloxDatabaseClient.SYNC_STRATEGY_ALWAYS, VeloxDatabaseClient.SYNC_STRATEGY_MANUAL, VeloxDatabaseClient.SYNC_STRATEGY_AUTO
      * 
@@ -278,12 +298,12 @@
         }
         prepare.bind(instance)(function (err) {
             if (err) { return callbackDone(err); }
-            syncStrategy.before.bind(instance)(function(err){
+            syncStrategy.before.bind(instance)({action: action, args: args}, function(err){
                 if (err) { return callbackDone(err); }
                 callbackDo(function(err){
                     if (err) { return callbackDone(err); }
                     var results = Array.prototype.slice.call(arguments) ;
-                    syncStrategy.after.bind(instance)(function(err){
+                    syncStrategy.after.bind(instance)({action: action, args: args},function(err){
                         if (err) { return callbackDone(err); }
                         callbackDone.apply(null, results) ;
                     }) ;
@@ -592,7 +612,7 @@
                     if(!tables){
                         //no table give, add all offline tables
                         tables = Object.keys(this.schema).filter(function(tableName){
-                            return tableName !== "__version" && tableName !== "velox_sync_log" && isOffline(tableName) ;
+                            return tableName !== "__version" && tableName !== "velox_sync_log" && tableName !== "velox_crash_report" && isOffline(tableName) ;
                         }) ;
 
                         //case of view that is composed by many table, must sync if any of used tables is modified
@@ -733,8 +753,9 @@
             callbackCalled = true ;
             pCallback(err) ;
         } ;
-        var syncingCount = tablesToSync.length ;
-        tablesToSync.forEach(function(table){
+        var multiread = {};
+        for(var i=0; i<tablesToSync.length; i++){
+            var table = tablesToSync[i];
             var search = { velox_version_table: { ope: ">", value: localVersions[table] } } ;
 
             var tableDef = this.schema[table] ;
@@ -751,40 +772,39 @@
                 }) ;
                 search = { $or : searches } ; 
             }
-    
-            //search new data for this table
-            this.constructor.prototype.search.bind(this)(table, search, function (err, newRecords) {
+
+            multiread[table] = {search: search} ;
+            multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, table_version: { ope: ">", value: localVersions[table] } }} ;
+        }
+
+        this.constructor.prototype.multiread.bind(this)(multiread, function(err,reads){
+            if (err) { return callback(err); }
+            var changeSet = [] ;
+            for(var i=0; i<tablesToSync.length; i++){
+                var table = tablesToSync[i] ;
+                var newRecords = reads[table] ;
+                var deletedRecords = reads[table+"_delete"] ;
+
+                for(var y=0; y<newRecords.length; y++){
+                    var r = newRecords[y] ;
+                    changeSet.push({ table: table, record: r, action: "auto" })
+                }
+                for(var y=0; y<deletedRecords.length; y++){
+                    var r = deletedRecords[y] ;
+                    var record = {} ;
+                    var splittedPk = r.table_uid.split("$_$") ;
+                    this.schema[table].pk.forEach(function(pk, i){
+                        record[pk] = splittedPk[i] ;
+                    }) ;
+
+                    changeSet.push({ table: table, record: record, action: "remove" });
+                }
+                
+            }
+            //apply in local storage
+            storage.transactionalChanges(changeSet, function (err) {
                 if (err) { return callback(err); }
-    
-                //search deleted records
-                this.constructor.prototype.search.bind(this)("velox_delete_track", { table_name: table, table_version: { ope: ">", value: localVersions[table] } }, function (err, deletedRecords) {
-                    if (err) { return callback(err); }
-    
-                    //create change set
-                    var changeSet = newRecords.map(function (r) {
-                        return { table: table, record: r, action: "auto" };
-                    });
-    
-                    deletedRecords.map(function (r) {
-                        var record = {} ;
-                        var splittedPk = r.table_uid.split("$_$") ;
-                        this.schema[table].pk.forEach(function(pk, i){
-                            record[pk] = splittedPk[i] ;
-                        }) ;
-    
-                        changeSet.push({ table: table, record: record, action: "remove" });
-                    }.bind(this));
-    
-                    //apply in local storage
-                    storage.transactionalChanges(changeSet, function (err) {
-                        if (err) { return callback(err); }
-                        syncingCount-- ;
-                        if(syncingCount === 0){
-                            //finished
-                            callback();
-                        }
-                    }.bind(this));
-                }.bind(this));
+                callback();
             }.bind(this));
         }.bind(this)) ;
     }

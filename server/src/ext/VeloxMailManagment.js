@@ -169,7 +169,6 @@ class VeloxMailManagment{
                     if(err){ return done(err) ;}
                     let job = new AsyncJob(AsyncJob.SERIES) ;
                     for(let mail of mails){
-                        console.log("schedule_date ??",  mail.schedule_date , new Date()) ;
                         if(!mail.schedule_date || mail.schedule_date < new Date()){
                             job.push((cb)=>{
                                 this.sendAMail(client, mail, cb) ;
