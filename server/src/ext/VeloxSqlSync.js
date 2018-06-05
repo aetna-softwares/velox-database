@@ -262,7 +262,7 @@ class VeloxSqlSync{
                 }
                 job.async(done) ;
     
-            }, function(err){
+            }, (err)=>{
                 if(err){ return callback(err) ;}
                 //at the end of transaction, update the sync log to done
                 records.push({ action : "update", table: "velox_sync_log", record: {uid: changeSet.uuid, status: 'done'}}) ;
