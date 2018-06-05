@@ -1036,7 +1036,7 @@ class VeloxUserManagment{
     beforeCheckUserRealmAllowed(table, record, callback){
         if(this.context && this.context.req && this.context.req.user){
             //check current user is allowed on this realm
-            this.search("velox_user_profile", {code : this.context.req.user.profile_code}, (err, userProfile)=>{
+            this.searchFirst("velox_user_profile", {code : this.context.req.user.profile_code}, (err, userProfile)=>{
                 if(err){ return callback(err) ;}
                 if(userProfile && userProfile.full_realm_access){
                     //this user has a profile with full realm access, skip further tests
