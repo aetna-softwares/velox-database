@@ -216,7 +216,6 @@ class VeloxSqlModifTracker{
              
             let alertJob = new AsyncJob(AsyncJob.SERIES) ;
             for(let r of result.rows){
-                console.log("tablesToTrack ?? "+r.table_name+" : "+this.tablesToTrack(r.table_name)) ;
                 if(this.tablesToTrack(r.table_name)) {
                     alertJob.push((cb)=>{
                         triggerCreateFunc(backend, tx, r.table_name, cb) ;
