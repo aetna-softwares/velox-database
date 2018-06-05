@@ -67,7 +67,7 @@ class VeloxCrashReport{
                 //this is the VeloxDatabaseExpress object
                 return (req, res)=>{
                     let crashReport = req.body.report ;
-
+                    crashReport.user_uid = req.user?req.user.uid:null ;
                     this.db.saveCrashReport(crashReport, (err)=>{
                         if(err){
                             this.db.logger.error("error when save binary", err);
@@ -110,7 +110,7 @@ class VeloxCrashReport{
     saveCrashReport(db, record, callback) {
         db.transaction((client, done)=>{
             record.uid = uuid.v4() ;
-            record.user_uid = db.context?db.context.req.user.uid:null ;
+            
             client.insert("velox_crash_report", record, (err)=>{
                 if(err){ return done(err) ;}
                 if(this.emailAlert !== "none"){
