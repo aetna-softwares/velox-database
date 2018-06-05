@@ -108,118 +108,202 @@ class VeloxSqlSync{
     applyChangeSet(db, changeSet, callback){
 
         var records = [] ;
-        let job = new AsyncJob(AsyncJob.SERIES) ;
+        
         let changeDateTimestampMilli = new Date(changeSet.date).getTime() ;
         let localTimeGap = changeSet.timeLapse ;
         changeDateTimestampMilli += localTimeGap ;
-        db.inDatabase((client, done)=>{
-            for(let change of changeSet.changes){
-                job.push((cb)=>{
-                    if(change.action === "remove"){
-                        records.push(change);
-                        cb();
-                    }else if(change.action === "insert"){
-                        records.push(change);
-                        cb();
-                    }else{
-                        client.getByPk(change.table, change.record, (err, recordDb)=>{
-                            if(err){ return cb(err); }
-                            if(!recordDb){
-                                //record does not exists yet, insert it
-                                change.action = "insert" ;
-                                records.push(change);
-                                cb();
-                            }else{
-                                //record exist in database
-                                if(recordDb.velox_version_record < change.record.velox_version_record){
-                                    //record in database is older, update
-                                    change.action = "update" ;
+        db.transaction((tx, done)=>{
+            tx.getByPk("velox_sync_log", changeSet.uuid, (err, existingLog)=>{
+                if(err){ return done(err) ;}
+                if(existingLog){
+                    //already seen, discard
+                    return done(null, false) ;
+                }
+                tx.insert("velox_sync_log", {
+                    uid: changeSet.uuid,
+                    client_date: changeSet.date,
+                    sync_date: new Date(),
+                    status: "todo",
+                    data: JSON.stringify(changeSet.changes)
+                }, (err)=>{
+                    if(err){ return done(err) ;}
+                    return done(null, true) ;
+                }) ;
+            }) ;
+        }, function(err, shouldApplyChange){
+            if(err){ return callback(err) ;}
+
+            if(!shouldApplyChange){ return callback() ;}
+
+            let job = new AsyncJob(AsyncJob.SERIES) ;
+            db.inDatabase((client, done)=>{
+                for(let change of changeSet.changes){
+                    job.push((cb)=>{
+                        if(change.action === "remove" || change.action === "removeWhere"){
+                            records.push(change);
+                            cb();
+                        }else if(change.action === "insert"){
+                            records.push(change);
+                            cb();
+                        }else{
+                            client.getByPk(change.table, change.record, (err, recordDb)=>{
+                                if(err){ return cb(err); }
+                                if(!recordDb){
+                                    //record does not exists yet, insert it
+                                    change.action = "insert" ;
                                     records.push(change);
-                                    cb() ;
+                                    cb();
                                 }else{
-                                    //record in database is more recent, compare which column changed
-        
-                                    let changedColumns = Object.keys(change.record).filter((col)=>{
-                                        return col.indexOf("velox_") !== 0 &&
-                                            change.record[col] != recordDb[col]; //don't do !== on purpose because 1 shoud equals "1"
-                                    }) ;
-        
-                                    if(changedColumns.length === 0){
-                                        //no modifications to do, no need to go further
-                                        return cb() ;
-                                    }
-        
-                                    client.getPrimaryKey(change.table, (err, pkNames)=>{
-                                        if(err){ return cb(err); }
-                                        client.search("velox_modif_track", {
-                                            table_name: change.table, 
-                                            table_uid: pkNames[0], 
-                                            version_record: {ope: ">", value: (change.record.velox_version_record || 0)-1}
-                                        }, "version_record", (err, modifications)=>{
+                                    //record exist in database
+                                    if(recordDb.velox_version_record < change.record.velox_version_record){
+                                        //record in database is older, update
+                                        change.action = "update" ;
+                                        records.push(change);
+                                        cb() ;
+                                    }else{
+                                        //record in database is more recent, compare which column changed
+            
+                                        let changedColumns = Object.keys(change.record).filter((col)=>{
+                                            return col.indexOf("velox_") !== 0 &&
+                                                change.record[col] != recordDb[col]; //don't do !== on purpose because 1 shoud equals "1"
+                                        }) ;
+            
+                                        if(changedColumns.length === 0){
+                                            //no modifications to do, no need to go further
+                                            return cb() ;
+                                        }
+            
+                                        client.getPrimaryKey(change.table, (err, pkNames)=>{
                                             if(err){ return cb(err); }
-                                            
-        
-                                            for(let modif of modifications){
-                                                let index = changedColumns.indexOf(modif.column_name);
-                                                if(index !== -1){
-                                                    //conflicting column
-                                                    
-                                                    let modifDateMilli = new Date(modif.version_date).getTime() ;
-        
-                                                    if(modifDateMilli <= changeDateTimestampMilli){
-                                                        //the modif date is older that our new modification
-                                                        //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
-                                                    }else{
-                                                        //the modif date is newer, we won't change in the table but we must modify the modif track
-                                                        // from oldval -> dbVal to oldval -> myVal -> dbVal
-                                                        var oldestVal = modif.column_before;
-                                                        var midWayVal = "" + change.record[modif.column_name] ;  
+                                            client.search("velox_modif_track", {
+                                                table_name: change.table, 
+                                                table_uid: pkNames[0], 
+                                                version_record: {ope: ">", value: (change.record.velox_version_record || 0)-1}
+                                            }, "version_record", (err, modifications)=>{
+                                                if(err){ return cb(err); }
+                                                
+            
+                                                for(let modif of modifications){
+                                                    let index = changedColumns.indexOf(modif.column_name);
+                                                    if(index !== -1){
+                                                        //conflicting column
                                                         
-                                                        //modifying existing modif by setting our change value as old value
-                                                        modif.column_before = midWayVal ;
-                                                        records.push({table : "velox_modif_track", action: "update", record: modif});
-                                                        records.push({table : "velox_modif_track", action: "insert", record: {
-                                                            version_date : new Date(changeDateTimestampMilli),
-                                                            column_before : oldestVal,
-                                                            column_after : midWayVal,
-                                                            version_user : change.record.velox_version_user,
-                                                            version_table : recordDb.version_table
-                                                        }});
-        
-                                                        //remove from changed column
-                                                        changedColumns.splice(index, 1) ;
-                                                        //remove column from record
-                                                        delete change.record[modif.column_name] ;
+                                                        let modifDateMilli = new Date(modif.version_date).getTime() ;
+            
+                                                        if(modifDateMilli <= changeDateTimestampMilli){
+                                                            //the modif date is older that our new modification
+                                                            //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
+                                                        }else{
+                                                            //the modif date is newer, we won't change in the table but we must modify the modif track
+                                                            // from oldval -> dbVal to oldval -> myVal -> dbVal
+                                                            var oldestVal = modif.column_before;
+                                                            var midWayVal = "" + change.record[modif.column_name] ;  
+                                                            
+                                                            //modifying existing modif by setting our change value as old value
+                                                            modif.column_before = midWayVal ;
+                                                            records.push({table : "velox_modif_track", action: "update", record: modif});
+                                                            records.push({table : "velox_modif_track", action: "insert", record: {
+                                                                version_date : new Date(changeDateTimestampMilli),
+                                                                column_before : oldestVal,
+                                                                column_after : midWayVal,
+                                                                version_user : change.record.velox_version_user,
+                                                                version_table : recordDb.version_table
+                                                            }});
+            
+                                                            //remove from changed column
+                                                            changedColumns.splice(index, 1) ;
+                                                            //remove column from record
+                                                            delete change.record[modif.column_name] ;
+                                                        }
                                                     }
                                                 }
-                                            }
-        
-                                                
-                                            if(changedColumns.length === 0){
-                                                //no modifications left to do
-                                                return cb() ;
-                                            } else {
-                                                // still some modification to do, apply them
-                                                change.action = "update" ;
-                                                records.push(change) ;
-                                                cb() ;
-                                            }
+            
+                                                    
+                                                if(changedColumns.length === 0){
+                                                    //no modifications left to do
+                                                    return cb() ;
+                                                } else {
+                                                    // still some modification to do, apply them
+                                                    change.action = "update" ;
+                                                    records.push(change) ;
+                                                    cb() ;
+                                                }
+                                            }) ;
                                         }) ;
-                                    }) ;
+                                    }
                                 }
-                            }
+                            }) ;
+                        }
+                    });
+                }
+                job.async(done) ;
+    
+            }, function(err){
+                if(err){ return callback(err) ;}
+                //at the end of transaction, update the sync log to done
+                records.push({ action : "update", table: "velox_sync_log", record: {uid: changeSet.uuid, status: 'done'}}) ;
+                db.transactionalChanges(records, (err)=>{
+                    if(err){
+                        //something went wrong during sync apply, don't error on client side but update the log table
+                        db.transaction((tx, done)=>{
+                            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(err)}, done) ;
+                        }, (err)=>{
+                            if(err){ return callback(err) ;}
+                            //tell client that he should refresh the table !
+                            callback(null, {shouldRefresh: true}) ;
                         }) ;
+                        return ;
                     }
-                });
-            }
-            job.async(done) ;
-
-        }, function(err){
-            if(err){ return callback(err) ;}
-            db.transactionalChanges(records, callback) ;
-        }) ;
+                    callback() ;
+                }) ;
+            }) ;
+        });
     }
 
+
+
+    /**
+     * Add needed schema changes on schema updates
+     * 
+     * @param {string} backend 
+     */
+    prependSchemaChanges(backend){
+        if(["pg"].indexOf(backend) === -1){
+            throw "Backend "+backend+" not handled by this extension" ;
+        }
+
+        let changes = [] ;
+
+        changes.push({
+            sql: this.getCreateTableSyncLog(backend)
+        }) ;
+        
+        
+        return changes;
+    }
+
+    /**
+     * Create the table velox_sync_log if not exists
+     * @param {string} backend 
+     */
+    getCreateTableSyncLog(backend){
+        let lines = [
+            "uid VARCHAR(40) PRIMARY KEY",
+            "client_date timestamp without time zone",
+            "sync_date timestamp without time zone",
+            "data TEXT",
+            "status VARCHAR(20)",
+            "error_msg TEXT"
+        ] ;
+        if(backend === "pg"){
+            return `
+            CREATE TABLE IF NOT EXISTS velox_sync_log (
+                ${lines.join(",")}
+            )
+            ` ;
+        }
+        throw "not implemented for backend "+backend ;
+    }
 }
 
 module.exports = VeloxSqlSync ;

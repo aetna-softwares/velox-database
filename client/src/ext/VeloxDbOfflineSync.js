@@ -11,6 +11,22 @@
     'use strict';
 
     /**
+     * Create an unique ID
+     */
+    function uuidv4() {
+        if(typeof(window.crypto) !== "undefined" && crypto.getRandomValues){
+            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function(c) {
+                return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+            }) ;
+        }else{
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    }
+
+    /**
      * Tables settings
      */
     var tableSettings = null;
@@ -29,6 +45,7 @@
         var localChanges = getOfflineChange();
         localChanges.push({
             date: new Date(),
+            uuid: uuidv4(),
             changes: changes
         });
         var key = LOCAL_CHANGE_KEY;
@@ -483,6 +500,8 @@
         }.bind(this)) ;
     } ;
 
+    var tableToForceRefresh = {} ;
+
     var uploadChanges = function (callback) {
         var localChanges = getOfflineChange();
         if (localChanges.length > 0) {
@@ -490,9 +509,15 @@
             calculateTimeLapse.bind(this)(0, 0, function(err, lapse){
                 if(err){ return callback(err) ;}
                 localChanges[0].timeLapse = lapse ;
-                this.client.ajax("sync", "POST", {changes: localChanges[0]}, "json", function (err) {
+                this.client.ajax("sync", "POST", {changes: localChanges[0]}, "json", function (err, result) {
                     if (err) {
                         return callback(err);
+                    }
+                    if(result && result.shouldRefresh){
+                        //something went wrong on server we should force a refresh on concerned tables
+                        localChanges[0].changes.forEach(function(c){
+                            tableToForceRefresh[c.table] = true ;
+                        }) ;
                     }
                     removeOfflineChange(0);
                     //go to next sync
@@ -611,7 +636,7 @@
                             var tableToSync = tables.filter(function(table){
                                 var distantVersion = distantVersions[table] ;
                                 var localVersion = localVersions[table] ;
-                                if(!localVersion){
+                                if(!localVersion || tableToForceRefresh[table]){
                                     localVersions[table] = -1 ;
                                 }
                                 return (
@@ -656,6 +681,11 @@
                                         return callback(err); 
                                     }
                                     
+                                    tableToSync.forEach(function(table){
+                                        //reset the force refresh
+                                        tableToForceRefresh[table] = false ;
+                                    }) ;
+
                                     syncing = false;
                                     this.lastSyncDate = new Date() ;
                                     callback();
