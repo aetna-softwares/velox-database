@@ -270,7 +270,7 @@ class VeloxSqlSync{
                 if(err){ return callback(err) ;}
                 //at the end of transaction, update the sync log to done
                 records.push({ action : "update", table: "velox_sync_log", record: {uid: changeSet.uuid, status: 'done'}}) ;
-                this.db.transaction((tx, done)=>{
+                db.transaction((tx, done)=>{
                     tx.context = context.context ;
                     tx.changes(records, done) ;
                 }, (errChange)=>{
