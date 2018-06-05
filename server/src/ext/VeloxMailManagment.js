@@ -105,7 +105,7 @@ class VeloxMailManagment{
                 let params = {
                     host: smtpServer.host,
                     port: smtpServer.port,
-                    secure: smtpServer.secure                    
+                    secure: smtpServer.port===465                   
                 } ;
                 if(smtpServer.username){
                     params.auth = {
@@ -280,7 +280,6 @@ class VeloxMailManagment{
                 uid VARCHAR(40) PRIMARY KEY,
                 host VARCHAR(128),
                 port INT,
-                secure BOOLEAN,
                 username VARCHAR(75),
                 pass VARCHAR(75)
             )
