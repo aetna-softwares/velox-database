@@ -287,7 +287,7 @@ class VeloxSqlDeleteTracker{
         if(backend === "pg"){
             return `
                 SELECT table_name FROM information_schema.tables 
-                WHERE table_name not like 'velox_%' 
+                WHERE table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log')
                 AND table_type = 'BASE TABLE' 
                 AND table_schema='public'
             ` ;

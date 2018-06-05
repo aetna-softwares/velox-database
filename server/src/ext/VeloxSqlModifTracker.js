@@ -508,9 +508,9 @@ class VeloxSqlModifTracker{
                 JOIN information_schema.tables t1 on t.table_name = t1.table_name
                     WHERE t.table_schema='public'
                     AND column_name = '${columnName}'
-                    AND t.table_name not like 'velox_%'
+                    AND t.table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log')
                     AND t1.table_type = 'BASE TABLE'
-                ) AND table_name not like 'velox_%' AND table_type = 'BASE TABLE' AND table_schema='public'
+                ) AND table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log') AND table_type = 'BASE TABLE' AND table_schema='public'
             ` ;
         }
         throw "not implemented for backend "+backend ;
@@ -525,7 +525,7 @@ class VeloxSqlModifTracker{
         if(backend === "pg"){
             return `
                 SELECT table_name FROM information_schema.tables 
-                WHERE table_name not like 'velox_%' 
+                WHERE table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log') 
                 AND table_type = 'BASE TABLE' 
                 AND table_schema='public'
             ` ;
