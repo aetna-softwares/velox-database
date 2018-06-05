@@ -72,16 +72,16 @@ class VeloxSqlModifTracker{
      */
     constructor(options){
         this.name = "VeloxSqlModifTracker";
-        this.tablesToTrack = ()=>{ return true; } ;
+        this._tablesToTrack = ()=>{ return true; } ;
         if(options && options.tablesToTrack){
             if(typeof(options.tablesToTrack) === "function"){
-                this.tablesToTrack = options.tablesToTrack ;
+                this._tablesToTrack = options.tablesToTrack ;
             }else if(Array.isArray(options.tablesToTrack)){
-                this.tablesToTrack = (t)=>{return options.tablesToTrack.indexOf(t) !== -1 ;} ;
+                this._tablesToTrack = (t)=>{return options.tablesToTrack.indexOf(t) !== -1 ;} ;
             }else if(options.tablesToTrack.include && Array.isArray(options.tablesToTrack.include)){
-                this.tablesToTrack = (t)=>{return options.tablesToTrack.include.indexOf(t) !== -1 ;} ;
+                this._tablesToTrack = (t)=>{return options.tablesToTrack.include.indexOf(t) !== -1 ;} ;
             }else if(options.tablesToTrack.exclude && Array.isArray(options.tablesToTrack.exclude)){
-                this.tablesToTrack = (t)=>{return options.tablesToTrack.exclude.indexOf(t) === -1 ;} ;
+                this._tablesToTrack = (t)=>{return options.tablesToTrack.exclude.indexOf(t) === -1 ;} ;
             }else{
                 throw "incorrect tablesToTrack option. If should be a function receiving table name and return true to track, "+
                 "or an array of tables to track or an object {include: []} containing tables to track"+
@@ -103,6 +103,15 @@ class VeloxSqlModifTracker{
                 callback();
             } },
         ] ;
+    }
+
+    tablesToTrack(table){
+        if(table.indexOf("velox_") === 0){
+            if(["velox_user_profile", "velox_user_realm", "velox_user", "velox_link_user_profile"].indexOf(table) === -1){
+                return false;
+            }
+        }
+        return this._tablesToTrack(table) ;
     }
 
     /**
@@ -507,9 +516,8 @@ class VeloxSqlModifTracker{
                 JOIN information_schema.tables t1 on t.table_name = t1.table_name
                     WHERE t.table_schema='public'
                     AND column_name = '${columnName}'
-                    AND t.table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log')
                     AND t1.table_type = 'BASE TABLE'
-                ) AND table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log') AND table_type = 'BASE TABLE' AND table_schema='public'
+                ) AND table_type = 'BASE TABLE' AND table_schema='public'
             ` ;
         }
         throw "not implemented for backend "+backend ;
@@ -524,8 +532,7 @@ class VeloxSqlModifTracker{
         if(backend === "pg"){
             return `
                 SELECT table_name FROM information_schema.tables 
-                WHERE table_name NOT IN ('velox_modif_track', 'velox_modif_table_version', 'velox_delete_track', 'velox_sync_log') 
-                AND table_type = 'BASE TABLE' 
+                WHERE table_type = 'BASE TABLE' 
                 AND table_schema='public'
             ` ;
         }
