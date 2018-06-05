@@ -274,7 +274,7 @@ class VeloxSqlSync{
                                 if(err){ return done(err) ;}
                                 if(this.emailAlert !== "none"){
                                     var email = {
-                                        uid: changeSet.uid,
+                                        uid: changeSet.uuid,
                                         from_addr: this.emailAddressFrom,
                                         to_addr: this.emailAddressTo,
                                         subject: "["+this.appName+"] Sync error report",
