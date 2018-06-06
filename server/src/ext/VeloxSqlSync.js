@@ -232,6 +232,7 @@ class VeloxSqlSync{
                                         //record exist in database
                                         if(recordDb.velox_version_record < change.record.velox_version_record){
                                             //record in database is older, update
+                                            console.log("RECORD IN DB IS OLDER", change.table, recordDb, change.record) ;
                                             change.action = "update" ;
                                             records.push(change);
                                             cb() ;
@@ -309,7 +310,7 @@ class VeloxSqlSync{
                                                     if(change.action === "insert"){
                                                         //case of conflicting insert, check diff on row time
                                                         let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
-
+                                                        console.log("WHO WIN 11 ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
                                                         changedColumns.forEach((changedCol, index)=>{
                                                             console.log("WHO WIN ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli)) ;
                                                             if(modifDateMilli <= changeDateTimestampMilli){
