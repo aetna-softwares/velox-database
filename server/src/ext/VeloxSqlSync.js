@@ -311,6 +311,7 @@ class VeloxSqlSync{
                                                         let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
 
                                                         changedColumns.forEach((changedCol, index)=>{
+                                                            console.log("WHO WIN ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli)) ;
                                                             if(modifDateMilli <= changeDateTimestampMilli){
                                                                 //the modif date is older that our new modification
                                                                 //this can happen if 2 offline synchronize but the newest user synchronize after the oldest

@@ -48,6 +48,7 @@
             uuid: uuidv4(),
             changes: changes
         });
+        console.log("ADD CHANGE ", localChanges[localChanges.length-1]) ;
         var key = LOCAL_CHANGE_KEY;
         if(currentUser){
             key = currentUser.login+"_"+LOCAL_CHANGE_KEY;
