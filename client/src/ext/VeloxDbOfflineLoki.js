@@ -111,8 +111,6 @@
 
     VeloxDbOfflineLoki.prototype.insert = function (table, record, callback) {
         try {
-            record.velox_version_record = 0;
-            record.velox_version_date = new Date();
             this.getCollection(table).insert(record);
         } catch (err) {
             if(callback) {callback(err);}

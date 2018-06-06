@@ -48,7 +48,7 @@
             uuid: uuidv4(),
             changes: changes
         });
-        console.log("ADD CHANGE ", localChanges[localChanges.length-1]) ;
+        //console.log("ADD CHANGE ", localChanges[localChanges.length-1]) ;
         var key = LOCAL_CHANGE_KEY;
         if(currentUser){
             key = currentUser.login+"_"+LOCAL_CHANGE_KEY;
@@ -416,7 +416,11 @@
             this.getSchema(function(err, schema){
                 if(err){ return callback(err) ;}
                 changeSet.forEach(function(change){
-                    change.record.velox_version_record = change.record.velox_version_record!==undefined?change.record.velox_version_record+1:0;
+                    if(change.action === "insert"){
+                        change.record.velox_version_record = 0 ;    
+                    } else {
+                        change.record.velox_version_record = change.record.velox_version_record!==undefined?change.record.velox_version_record+1:0;
+                    }
                     change.record.velox_version_date = new Date();
                     change.record = this._prepareSerializableRecord(change.table, change.record, schema) ;
                 }.bind(this)) ;
