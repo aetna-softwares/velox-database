@@ -307,9 +307,10 @@ class VeloxSqlSync{
                                                         }
                                                     }
 
+                                                    let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
+                                                    console.log("RECORD ???????",  change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
                                                     if(change.action === "insert"){
                                                         //case of conflicting insert, check diff on row time
-                                                        let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
                                                         console.log("WHO WIN 11 ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
                                                         changedColumns.forEach((changedCol, index)=>{
                                                             console.log("WHO WIN ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli)) ;
@@ -350,6 +351,7 @@ class VeloxSqlSync{
                                                         return cb() ;
                                                     } else {
                                                         // still some modification to do, apply them
+                                                        console.log("MODIF TO DO ???????",  change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
                                                         change.action = "update" ;
                                                         records.push(change) ;
                                                         cb() ;
