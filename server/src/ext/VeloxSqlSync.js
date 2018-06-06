@@ -223,7 +223,7 @@ class VeloxSqlSync{
                                                 if(err){ return cb(err); }
 
                                                 let pkValue = pkNames.map(function(pk){
-                                                    return change.record[pk.column_name] ;
+                                                    return change.record[pk] ;
                                                 }).join(" || '$_$' || ") ;
 
                                                 client.search("velox_modif_track", {
