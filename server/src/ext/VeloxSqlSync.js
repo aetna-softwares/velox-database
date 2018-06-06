@@ -197,10 +197,37 @@ class VeloxSqlSync{
                                 client.getByPk(change.table, change.record, (err, recordDb)=>{
                                     if(err){ return cb(err); }
                                     if(!recordDb){
-                                        //record does not exists yet, insert it
-                                        change.action = "insert" ;
-                                        records.push(change);
-                                        cb();
+                                        //record does not exists yet, 
+                                        if(change.action === "update"){
+                                            //check if we are updating a deleted record
+                                            client.getPrimaryKey(change.table, (err, pkNames)=>{
+                                                if(err){ return cb(err); }
+
+                                                let pkValue = pkNames.map(function(pk){
+                                                    return change.record[pk] ;
+                                                }).join(" || '$_$' || ") ;
+
+                                                client.searchFirst("velox_delete_track", {table_name: change.table, table_uid: pkValue}, (err, deleteRecord)=>{
+                                                    if(err){ return cb(err); }
+                                                    if(deleteRecord){
+                                                        //the record has been deleted, ingore the modification
+                                                        cb() ;
+                                                    }else{
+                                                        //the record does not exists and was not deleted, create it
+                                                        change.action = "insert" ;
+                                                        records.push(change);
+                                                        cb();
+                                                    }
+                                                });
+                                            });
+
+                                        }else{
+                                            //it is an insert, it is normal that the record does not exist
+                                            //insert it
+                                            change.action = "insert" ;
+                                            records.push(change);
+                                            cb();
+                                        }
                                     }else{
                                         //record exist in database
                                         if(recordDb.velox_version_record < change.record.velox_version_record){
@@ -212,7 +239,7 @@ class VeloxSqlSync{
                                             //record in database is more recent, compare which column changed
                 
                                             let changedColumns = Object.keys(change.record).filter((col)=>{
-                                                var isMasked = this.maskedColumns.some((m)=>{ return m.table === change.table && m.column === col}) ;
+                                                var isMasked = this.maskedColumns.some((m)=>{ return m.table === change.table && m.column === col ;}) ;
                                                 if(isMasked){ return false ;}
                                                 return col.indexOf("velox_") !== 0 &&
                                                     change.record[col] != recordDb[col]; //don't do !== on purpose because 1 shoud equals "1"
