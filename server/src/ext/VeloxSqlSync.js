@@ -29,6 +29,7 @@ class VeloxSqlSync{
      * @property {string} [emailAlert] Send alert by email on sync error. Possible values are : none (default if no adress given), immediate, hourly (default if adress given), daily
      * @property {string} [emailAddressFrom] Email address to send alerts
      * @property {string} [emailAddressTo] Email address to send alerts
+     * @property {Array} [maskedColumns] Masked columns that should not be tracked in sync (typically passwords that we don't wan't to track)
      * @property {function|Array|object} [tablesToTrack] the table to track configuration. If not given all tables are tracked.
      * @property {string} [syncGetTimeEndPoint] the endpoint to sync time (default /syncGetTime)
      * @property {string} [syncEndPoint] the endpoint to sync (default /sync)
@@ -67,6 +68,9 @@ class VeloxSqlSync{
         if(this.emailAlert !== "none" && !this.emailAddressTo){
             throw "You must give a destination address email" ;
         }
+
+        this.maskedColumns = options.maskedColumns || [] ;
+        this.maskedColumns.push({table: "velox_user", column: "password"}) ;
 
         this.dependencies = [
             new VeloxSqlModifTracker(options),
@@ -208,6 +212,8 @@ class VeloxSqlSync{
                                             //record in database is more recent, compare which column changed
                 
                                             let changedColumns = Object.keys(change.record).filter((col)=>{
+                                                var isMasked = this.maskedColumns.some((m)=>{ return m.table === change.table && m.column === col}) ;
+                                                if(isMasked){ return false ;}
                                                 return col.indexOf("velox_") !== 0 &&
                                                     change.record[col] != recordDb[col]; //don't do !== on purpose because 1 shoud equals "1"
                                             }) ;
