@@ -252,6 +252,7 @@ class VeloxSqlSync{
                                                                     version_date : new Date(changeDateTimestampMilli),
                                                                     column_before : oldestVal,
                                                                     column_after : midWayVal,
+                                                                    table_name: change.table,
                                                                     version_user : change.record.velox_version_user,
                                                                     version_table : recordDb.version_table||0,
                                                                     version_record: recordDb.version_record || 0
@@ -283,6 +284,7 @@ class VeloxSqlSync{
                                                                     version_date : new Date(changeDateTimestampMilli),
                                                                     column_before : oldestVal,
                                                                     column_after : newVal,
+                                                                    table_name: change.table,
                                                                     version_user : recordDb.velox_version_user,
                                                                     version_table : recordDb.version_table||0,
                                                                     version_record: recordDb.version_record || 0
