@@ -221,9 +221,14 @@ class VeloxSqlSync{
                 
                                             client.getPrimaryKey(change.table, (err, pkNames)=>{
                                                 if(err){ return cb(err); }
+
+                                                let pkValue = pkNames.map(function(pk){
+                                                    return change.record[pk.column_name] ;
+                                                }).join(" || '$_$' || ") ;
+
                                                 client.search("velox_modif_track", {
                                                     table_name: change.table, 
-                                                    table_uid: pkNames[0], 
+                                                    table_uid: pkValue, 
                                                     version_record: {ope: ">", value: (change.record.velox_version_record || 0)-1}
                                                 }, "version_record", (err, modifications)=>{
                                                     if(err){ return cb(err); }
@@ -253,6 +258,7 @@ class VeloxSqlSync{
                                                                     column_before : oldestVal,
                                                                     column_after : midWayVal,
                                                                     table_name: change.table,
+                                                                    table_uid: pkValue,
                                                                     version_user : change.record.velox_version_user,
                                                                     version_table : recordDb.version_table||0,
                                                                     version_record: recordDb.version_record || 0
@@ -284,6 +290,7 @@ class VeloxSqlSync{
                                                                     version_date : new Date(changeDateTimestampMilli),
                                                                     column_before : oldestVal,
                                                                     column_after : newVal,
+                                                                    table_uid: pkValue,
                                                                     table_name: change.table,
                                                                     version_user : recordDb.velox_version_user,
                                                                     version_table : recordDb.version_table||0,
