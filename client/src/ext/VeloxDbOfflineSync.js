@@ -352,7 +352,9 @@
             var val = record[col.name] ;
             if(val !== undefined){
                 if(val && typeof(val) === "object" && val.constructor != Date){
-                    if(val.toNumber){
+                    if(Array.isArray(val)){
+                        val = JSON.stringify(val) ;
+                    }else if(val.toNumber){
                         val = val.toNumber() ;
                     }else if(val.toString){
                         val = val.toString() ;

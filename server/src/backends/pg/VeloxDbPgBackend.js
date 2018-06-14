@@ -350,6 +350,22 @@ class VeloxDbPgClient {
             }
         }
 
+
+        for(let rec of recordsByPk){
+            for(let col of schema[table].columns){
+                if(col.type === "multiple"){
+                    var value = rec.record[col.name];
+                    if(value && value[0]==="[" && value[value.length-1] === "]"){
+                        try{
+                            rec.record[col.name] = JSON.parse(rec.record[col.name]) ;
+                        }catch(e){}
+                    }else{
+                        rec.record[col.name] = [rec.record[col.name]] ;
+                    }
+                }
+            }
+        }
+
         //do a first loop to initialize the thisTable property because be dig inside sub join, it will provoque ambiguity
         if(joinFetch){
             for(let join of joinFetch){
