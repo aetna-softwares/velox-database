@@ -375,7 +375,7 @@
             } else {
                 var chain = this.getCollection(table).chain().find(this._translateSearch(search));
                 if (orderBy) {
-                    if (typeof (sortColumn) === "string") {
+                    if (typeof (orderBy) === "string") {
                         chain = chain.simplesort(orderBy);
                     } else {
                         if (!Array.isArray(orderBy)) {
@@ -548,8 +548,8 @@
                     translatedVal = { $in: val };
                 } else if (val && typeof (val) === "object" && val.constructor === RegExp) {
                     translatedVal = { $regex: val };
-                } else if (val && typeof (val) === "string" && val.indexOf("%") !== -1) {
-                    translatedVal = { $regex: new RegExp(val.replace(/%/g, "*")) };
+                } else if (val && typeof (val) === "string" && (val.indexOf("%") !== -1 || val.indexOf("*") !== -1)) {
+                    translatedVal = { $regex: new RegExp(val.replace(/%/g, "*").replace(/\*/g, ".*"), "i") };
                 }
                 var translateSearch = {};
                 translateSearch[k] = translatedVal;
