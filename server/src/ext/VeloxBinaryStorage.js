@@ -3,8 +3,8 @@ const uuid = require("uuid") ;
 const fs = require('fs-extra');
 const path = require('path');
 const multiparty = require('multiparty');
-const url = require('url');
 const crypto = require('crypto');
+const AsyncJob = require("velox-commons/AsyncJob") ;
 
 /**
  * This extension handle binary storage in database
@@ -157,6 +157,11 @@ class VeloxBinaryStorage{
                 app.post(options.saveEndPoint || "/saveBinary", this.getSaveBinaryMiddleware());
                 app.get((options.readEndPoint || "/readBinary")+"/:action/:uid/:filename?", this.getReadBinaryMiddleware());
             }
+        ] ;
+
+
+        this.interceptClientQueries = [
+            {name : "remove", table: "velox_binary", after: this.removeBinary },
         ] ;
     }
 
@@ -361,6 +366,33 @@ class VeloxBinaryStorage{
     }
 
     /**
+     * Called when record binary is deleted, delete the file on disk
+     * @param {*} table 
+     * @param {*} records 
+     */
+    removeBinary(table, records){
+        if(!records){ return; }
+        if(!Array.isArray(records)){
+            records = [records] ;
+        }
+        var job = new AsyncJob(AsyncJob.SERIES) ;
+        for(let record of records){
+            job.push( (cb)=>{
+                let filePath = path.join(this.pathStorage, record.path) ;
+                fs.unlink(filePath, (err)=>{
+                    if(err){ return cb(err);}
+                    cb() ;
+                }) ;
+            });
+        }
+        job.async((err)=>{
+            if(err){
+                this.db.logger.error("Error while delete file"+ err) ;
+            }
+        }) ;
+    }
+
+    /**
      * Get a file read stream and the meta data 
      * 
      * @param {VeloxDatabase} db the database access
@@ -394,6 +426,7 @@ class VeloxBinaryStorage{
         changes.push({
             sql: this.getCreateTableBinary(backend)
         }) ;
+
         
         return changes;
     }
@@ -422,6 +455,9 @@ class VeloxBinaryStorage{
         }
         throw "not implemented for backend "+backend ;
     }
+
+
+    
 
     
 }
