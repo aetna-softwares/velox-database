@@ -16,7 +16,7 @@
     function uuidv4() {
         if(typeof(window.crypto) !== "undefined" && crypto.getRandomValues){
             return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function(c) {
-                return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+                return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16) ;
             }) ;
         }else{
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
@@ -99,6 +99,19 @@
         storage = storageEngine;
     };
 
+    function getJoinTables(tables, joins){
+        if(joins){
+            joins.forEach(function(join){
+                if(tables.indexOf(join.otherTable) === -1){
+                    tables.push(join.otherTable) ;
+                }
+                if(join.joins){
+                    getJoinTables(tables, join.joins);
+                }
+            });
+        }
+    }
+
     /**
      * Sync strategy "always sync" : do sync before and after each operation
      */
@@ -109,9 +122,13 @@
             }
             var tables = [context.args[0]] ;
             if(context.action === "multiread"){
-                tables = Object.keys(context.args[0]).map(function(k){
-                    return context.args[0][k].table||k ;
+                tables = [];
+                Object.keys(context.args[0]).forEach(function(k){
+                    tables.push(context.args[0][k].table||k) ;
+                    getJoinTables(tables, context.args[0][k].joinFetch) ;
                 }) ;
+            }else{
+                getJoinTables(tables, context.args[2]) ;
             }
             this.sync(tables, function(err){
                 if(err){ console.info("Sync failed, assume offline", err); }
@@ -798,7 +815,7 @@
 
                 for(var y=0; y<newRecords.length; y++){
                     var r = newRecords[y] ;
-                    changeSet.push({ table: table, record: r, action: "auto" })
+                    changeSet.push({ table: table, record: r, action: "auto" }) ;
                 }
                 for(var y=0; y<deletedRecords.length; y++){
                     var r = deletedRecords[y] ;
