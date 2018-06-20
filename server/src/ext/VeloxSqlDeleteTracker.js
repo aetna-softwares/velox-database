@@ -81,7 +81,7 @@ class VeloxSqlDeleteTracker{
 
     tablesToTrack(table){
         if(table.indexOf("velox_") === 0){
-            if(["velox_user_profile", "velox_user_realm", "velox_user", "velox_link_user_profile"].indexOf(table) === -1){
+            if(["velox_user_profile", "velox_user_realm", "velox_user", "velox_link_user_profile", "velox_binary"].indexOf(table) === -1){
                 return false;
             }
         }
