@@ -401,6 +401,23 @@
                 records = chain.data();
             }
             var records = this._sanatizeRecord(records);
+            var colsMuliple =  this.schema[table].columns.filter(function(col){ return col.type === "multiple" ;}) ;
+            if(colsMuliple.length > 0){
+                for(var i=0; i<records.length; i++){
+                    var rec = records[i] ;
+                    for(var y=0; y<colsMuliple.length; y++){
+                        var col = colsMuliple[y] ;
+                        var value = rec[col.name];
+                        if(value && value[0]==="[" && value[value.length-1] === "]"){
+                            try{
+                                rec[col.name] = JSON.parse(rec[col.name]) ;
+                            }catch(e){}
+                        }else{
+                            rec[col.name] = [rec[col.name]] ;
+                        }
+                    }
+                }
+            }
             if(joinFetch){
                 for(var i=0; i<records.length; i++){
                     var record = records[i] ;
