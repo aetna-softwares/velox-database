@@ -222,13 +222,13 @@
                 }
                 var thisField = join.thisField ;
                 if(thisField){
-                    if(!this.schema[thisTable].columns.some((c)=>{ return c.name === thisField ;})){ 
+                    if(!this.schema[thisTable].columns.some(function(c){ return c.name === thisField ;})){ 
                         throw ("Unknown columns "+thisTable+"."+thisField) ;
                     }
                 }
                 var otherField = join.otherField ;
                 if(otherField){
-                    if(!this.schema[join.otherTable].columns.some((c)=>{ return c.name === otherField ;})){ 
+                    if(!this.schema[join.otherTable].columns.some(function(c){ return c.name === otherField ;})){ 
                         throw ("Unknown columns "+join.otherTable+"."+otherField) ;
                     }
                 }
