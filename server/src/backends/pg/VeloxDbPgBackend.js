@@ -143,9 +143,11 @@ class VeloxDbPgClient {
         if(lowerSql.indexOf("create ") != -1 || lowerSql.indexOf("alter ") != -1 ){
             delete this.cache.schema ;
         }
-        for(let i=0; i<params.length; i++){
-            if(params[i] && typeof(params[i]) === "object"){
-                params[i] = JSON.stringify(params[i]) ;
+        if(params){
+            for(let i=0; i<params.length; i++){
+                if(params[i] && typeof(params[i]) === "object"){
+                    params[i] = JSON.stringify(params[i]) ;
+                }
             }
         }
         this.connection.query(sql, params, (err, results)=>{
