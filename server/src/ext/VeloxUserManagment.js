@@ -825,7 +825,7 @@ class VeloxUserManagment{
                                 if(currentRealm && table.realmCol && table.realmCol.indexOf(".") === -1 && !record[table.realmCol]){
                                     record[table.realmCol] = currentRealm;
                                 }
-                                if(table.userCol && table.userCol.indexOf(".") === -1 && record[table.userCol]){
+                                if(tableName != 'velox_user' && table.userCol && table.userCol.indexOf(".") === -1 && record[table.userCol]){
                                     record[table.userCol] = user.uid;
                                 }
                             }
