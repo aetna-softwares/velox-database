@@ -707,8 +707,8 @@ class VeloxDbPgClient {
 
             this._queryFirst(sql, params, (err, rows) => {
                 if(err){ return callback(err) ;}
-                let records = this.constructResults(schema, table,  null, rows, null) ;
-                callback(null, records) ;
+                let records = this.constructResults(schema, table,  null, [rows], null) ;
+                callback(null, records[0]) ;
             }) ;
         }) ;
     }
@@ -761,8 +761,8 @@ class VeloxDbPgClient {
 
             this._queryFirst(sql, params, (err, rows) => {
                 if(err){ return callback(err) ;}
-                var records = this.constructResults(schema, table,  null, rows, null) ;
-                callback(null, records) ;
+                var records = this.constructResults(schema, table,  null, [rows], null) ;
+                callback(null, records[0]) ;
             }) ;
         }) ;
     }
