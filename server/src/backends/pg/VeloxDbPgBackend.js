@@ -322,12 +322,15 @@ class VeloxDbPgClient {
         let pkIndexes = {} ;
         for(let r of rows){
             let pkValue = "";
-            let a = aliases[aliasId||"main"] ;
-            if(a === "t"){ 
-                //main table, no column prefix
-                a = "" ;
-            }else{
-                a = a+"_" ;
+            let a = "";
+            if(aliases){
+                a = aliases[aliasId||"main"] ;
+                if(a === "t"){ 
+                    //main table, no column prefix
+                    a = "" ;
+                }else{
+                    a = a+"_" ;
+                }
             }
 
             if(schema[table].pk.length === 0){
@@ -702,7 +705,11 @@ class VeloxDbPgClient {
 
             let sql = `INSERT INTO ${table}(${cols.map((c)=>{ return '"'+c+'"' ;}).join(",")}) VALUES ${values.join(",")} RETURNING *` ;
 
-            this._queryFirst(sql, params, callback) ;
+            this._queryFirst(sql, params, (err, rows) => {
+                if(err){ return callback(err) ;}
+                let records = this.constructResults(schema, table,  null, rows, null) ;
+                callback(null, records) ;
+            }) ;
         }) ;
     }
 
@@ -715,43 +722,47 @@ class VeloxDbPgClient {
      */
     update(table, record, callback){
         if(!record) { return callback("Try to update null record in table "+table) ; }
-        this.getColumnsDefinition(table, (err, columns)=>{
+        this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
-            this.getPrimaryKey(table, (err, pkColumns)=>{
-                if(err){ return callback(err); }
 
-                //check PK
-                if(Object.keys(record).length < pkColumns.length){
-                    return callback("Error updating in table "+table+", the given record miss primary keys, expected : "+pkColumns.join(",")) ;
-                }
-                for(let k of pkColumns){
-                    if(Object.keys(record).indexOf(k) === -1){
-                        return callback("Error updating in table "+table+", the given record miss primary key "+k+" property") ;
-                    }
-                }
+            let columns = schema[table].columns ;
+            let pkColumns = schema[table].pk ;
 
-                let sets = [];
-                let params = [] ;
-                for(let c of columns){
-                    if(record[c.column_name] !== undefined && pkColumns.indexOf(c.column_name) === -1){
-                        params.push(record[c.column_name]) ;
-                        sets.push("\""+c.column_name+"\" = $"+params.length) ;
-                    }
+            //check PK
+            if(Object.keys(record).length < pkColumns.length){
+                return callback("Error updating in table "+table+", the given record miss primary keys, expected : "+pkColumns.join(",")) ;
+            }
+            for(let k of pkColumns){
+                if(Object.keys(record).indexOf(k) === -1){
+                    return callback("Error updating in table "+table+", the given record miss primary key "+k+" property") ;
                 }
-                let where = [] ;
-                for(let k of pkColumns){
-                    params.push(record[k]) ;
-                    where.push("\""+k+"\" = $"+params.length) ;
+            }
+
+            let sets = [];
+            let params = [] ;
+            for(let c of columns){
+                if(record[c.column_name] !== undefined && pkColumns.indexOf(c.column_name) === -1){
+                    params.push(record[c.column_name]) ;
+                    sets.push("\""+c.column_name+"\" = $"+params.length) ;
                 }
+            }
+            let where = [] ;
+            for(let k of pkColumns){
+                params.push(record[k]) ;
+                where.push("\""+k+"\" = $"+params.length) ;
+            }
 
-                if(sets.length === 0){
-                    //nothing to update, select the record and return it
-                    return this.getByPk(table, record, callback) ;
-                }
+            if(sets.length === 0){
+                //nothing to update, select the record and return it
+                return this.getByPk(table, record, callback) ;
+            }
 
-                let sql = `UPDATE ${table} SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;
+            let sql = `UPDATE ${table} SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;
 
-                this._queryFirst(sql, params, callback) ;
+            this._queryFirst(sql, params, (err, rows) => {
+                if(err){ return callback(err) ;}
+                var records = this.constructResults(schema, table,  null, rows, null) ;
+                callback(null, records) ;
             }) ;
         }) ;
     }
