@@ -741,9 +741,9 @@ class VeloxDbPgClient {
             let sets = [];
             let params = [] ;
             for(let c of columns){
-                if(record[c.column_name] !== undefined && pkColumns.indexOf(c.column_name) === -1){
-                    params.push(record[c.column_name]) ;
-                    sets.push("\""+c.column_name+"\" = $"+params.length) ;
+                if(record[c.name] !== undefined && pkColumns.indexOf(c.name) === -1){
+                    params.push(record[c.name]) ;
+                    sets.push("\""+c.name+"\" = $"+params.length) ;
                 }
             }
             let where = [] ;
