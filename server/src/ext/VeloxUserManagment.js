@@ -799,8 +799,7 @@ class VeloxUserManagment{
                                     }) ;
 
                                     return `(SELECT DISTINCT ${table.name}.*
-                                        FROM
-                                        ${from} 
+                                         ${from} 
                                         WHERE u.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnUser.join(", ")})
                                     )`;
                             } else {
