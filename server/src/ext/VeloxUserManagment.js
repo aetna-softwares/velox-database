@@ -800,7 +800,7 @@ class VeloxUserManagment{
 
                                     return `(SELECT DISTINCT ${table.name}.*
                                          ${from} 
-                                        WHERE u.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnUser.join(", ")})
+                                        WHERE u.uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnUser.join(", ")})
                                     )`;
                             } else {
                                 //no authorization on user neither, give back fake empty table
@@ -914,7 +914,7 @@ class VeloxUserManagment{
 
                                             var sql = `(SELECT 1
                                                 ${from} 
-                                                WHERE u.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnUser.join(", ")})
+                                                WHERE u.uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnUser.join(", ")})
                                                 AND ${where}
                                             )`;
                                             this.unsafe((txUnsafe, done)=>{
