@@ -72,9 +72,9 @@ class VeloxBinaryStorage{
                 //this is the VeloxDatabase object
                 self.saveBinary(this, record, pathOrStream, callback) ;
             },
-            getBinary : function(uid, callback){
+            getBinary : function(tableOruid, tableUid, callback){
                 //this is the VeloxDatabase object
-                self.getBinary(this, uid, callback) ;
+                self.getBinary(this, tableOruid, tableUid, callback) ;
             },
             getBinaryStream : function(uid, callback){
                 //this is the VeloxDatabase object
@@ -348,12 +348,23 @@ class VeloxBinaryStorage{
      * Get the file content (buffer) and the meta data 
      * 
      * @param {VeloxDatabase} db the database access
-     * @param {string} uid the binary record uid
+     * @param {string} tableOruid the table name or binary uid
+     * @param {string} [tableUid] if the table is given, the tableUid
      * @param {function} callback callback, receive the file content and the record meta
      */
-    getBinary(db, uid, callback){
+    getBinary(db, tableOruid, tableUid, callback){
+        var search = {
+            table_name : tableOruid,
+            table_uid : tableUid
+        } ;
+        if(typeof(tableUid) === "function"){
+            callback = tableUid;
+            var search = {
+                uid : tableOruid
+            } ;
+        }
         db.inDatabase((client, done)=>{
-            client.getByPk("velox_binary", uid, (err, record)=>{
+            client.searchFirst(search, (err, record)=>{
                 if(err){ return done(err); }
                 if(!record) { return done("No binary data with id "+uid+" found") ;}
                 let filePath = path.join(this.pathStorage, record.path) ;
