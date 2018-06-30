@@ -359,14 +359,15 @@ class VeloxBinaryStorage{
         } ;
         if(typeof(tableUid) === "function"){
             callback = tableUid;
+            tableUid = "" ;
             var search = {
                 uid : tableOruid
             } ;
         }
         db.inDatabase((client, done)=>{
-            client.searchFirst(search, (err, record)=>{
+            client.searchFirst("velox_binary", search, (err, record)=>{
                 if(err){ return done(err); }
-                if(!record) { return done("No binary data with id "+uid+" found") ;}
+                if(!record) { return done("No binary data with id "+tableOruid+" / "+tableUid+" found") ;}
                 let filePath = path.join(this.pathStorage, record.path) ;
                 fs.readFile(filePath, (err, contents)=>{
                     if(err){ return done(err);}
