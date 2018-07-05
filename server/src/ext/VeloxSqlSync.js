@@ -368,7 +368,14 @@ class VeloxSqlSync{
                 }) ;
     
             }, (err)=>{
-                if(err){ return callback(err) ;}
+                if(err){ 
+                    this._setLogError(db, changeSet, err, (errSaveLog)=>{
+                        if(err){ return callback(errSaveLog) ;}
+                        //tell client that he should refresh the table !
+                        callback(null, {shouldRefresh: true}) ;
+                    }) ;
+                    return  ;
+                }
                 //at the end of transaction, update the sync log to done
                 records.push({ action : "update", table: "velox_sync_log", record: {uid: changeSet.uuid, status: 'done'}}) ;
                 db.transaction((tx, done)=>{
@@ -377,56 +384,7 @@ class VeloxSqlSync{
                 }, (errChange)=>{
                     if(errChange){
                         //something went wrong during sync apply, don't error on client side but update the log table
-                        db.transaction((tx, done)=>{
-                            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(errChange)}, (err)=>{
-                                if(err){ return done(err) ;}
-                                if(this.emailAlert !== "none"){
-                                    var email = {
-                                        uid: changeSet.uuid,
-                                        from_addr: this.emailAddressFrom,
-                                        to_addr: this.emailAddressTo,
-                                        subject: "["+this.appName+"] Sync error report",
-                                        text: "The following errors happens :\n\n",
-                                        html: "The following errors happens :<br /><br />",
-                                    };
-                                    if(this.emailAlert === "immediate"){
-                                        email.schedule_type = "now";
-                                        email.status = "tosend";
-                                    }else if(this.emailAlert === "hourly"){
-                                        email.schedule_type = "later";
-                                        email.status = "tosend";
-                                        var now = new Date() ;
-                                        email.schedule_date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()+1, 0, 0, 0);
-                                    }else if(this.emailAlert === "daily"){
-                                        email.schedule_type = "later";
-                                        email.status = "tosend";
-                                        var now = new Date() ;
-                                        email.schedule_date = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0, 0, 0, 0);
-                                    }
-                                    tx.searchFirst("velox_mail", {status: "tosend", subject: email.subject}, (err, foundEmail)=>{
-                                        if(err){ return done(err) ;}
-                                        if(foundEmail){
-                                            email = foundEmail ;
-                                        }
-                
-                                        email.text += "----------------------------------\n" ;
-                                        email.text += "Date : "+new Date()+"\n";
-                                        email.text += "Error : "+JSON.stringify(errChange)+"\n";
-                                        email.text += "----------------------------------\n" ;
-                                        email.html = email.text.replace(/\n/g, "<br />") ;
-                
-                                        if(foundEmail){
-                                            tx.update("velox_mail", email, done) ;
-                                        }else{
-                                            tx.insert("velox_mail", email, done) ;
-                                        }
-                                    }) ;
-                                }else{
-                                    //no email alert
-                                    done() ;
-                                }
-                            }) ;
-                        }, (err)=>{
+                        this._setLogError(db, changeSet, errChange, (err)=>{
                             if(err){ return callback(err) ;}
                             //tell client that he should refresh the table !
                             callback(null, {shouldRefresh: true}) ;
@@ -439,7 +397,58 @@ class VeloxSqlSync{
         });
     }
 
+    _setLogError(db, changeSet, error, callback){
+        db.transaction((tx, done)=>{
+            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(error)}, (err)=>{
+                if(err){ return done(err) ;}
+                if(this.emailAlert !== "none"){
+                    var email = {
+                        uid: changeSet.uuid,
+                        from_addr: this.emailAddressFrom,
+                        to_addr: this.emailAddressTo,
+                        subject: "["+this.appName+"] Sync error report",
+                        text: "The following errors happens :\n\n",
+                        html: "The following errors happens :<br /><br />",
+                    };
+                    if(this.emailAlert === "immediate"){
+                        email.schedule_type = "now";
+                        email.status = "tosend";
+                    }else if(this.emailAlert === "hourly"){
+                        email.schedule_type = "later";
+                        email.status = "tosend";
+                        var now = new Date() ;
+                        email.schedule_date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours()+1, 0, 0, 0);
+                    }else if(this.emailAlert === "daily"){
+                        email.schedule_type = "later";
+                        email.status = "tosend";
+                        var now = new Date() ;
+                        email.schedule_date = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 0, 0, 0, 0);
+                    }
+                    tx.searchFirst("velox_mail", {status: "tosend", subject: email.subject}, (err, foundEmail)=>{
+                        if(err){ return done(err) ;}
+                        if(foundEmail){
+                            email = foundEmail ;
+                        }
 
+                        email.text += "----------------------------------\n" ;
+                        email.text += "Date : "+new Date()+"\n";
+                        email.text += "Error : "+JSON.stringify(error)+"\n";
+                        email.text += "----------------------------------\n" ;
+                        email.html = email.text.replace(/\n/g, "<br />") ;
+
+                        if(foundEmail){
+                            tx.update("velox_mail", email, done) ;
+                        }else{
+                            tx.insert("velox_mail", email, done) ;
+                        }
+                    }) ;
+                }else{
+                    //no email alert
+                    done() ;
+                }
+            }) ;
+        }, callback);
+    }
 
     /**
      * Add needed schema changes on schema updates
