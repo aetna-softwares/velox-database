@@ -292,7 +292,7 @@
                     }
                     //console.log("START join "+table+" > "+join.otherTable+" WHERE ", searchJoin);
                     
-                    var result = this.search(join.otherTable, searchJoin, join.joins, null, 0, limit);
+                    var result = this.search(join.otherTable, searchJoin, join.joins, join.orderBy, 0, limit);
                     if(result.err){ 
                         throw result.err ;
                     }
@@ -375,18 +375,21 @@
             } else {
                 var chain = this.getCollection(table).chain().find(this._translateSearch(search));
                 if (orderBy) {
-                    if (typeof (orderBy) === "string") {
+                    if (typeof (orderBy) === "string" && /^[a-zA-Z_0-9]+$/.test(orderBy)) {
                         chain = chain.simplesort(orderBy);
                     } else {
                         if (!Array.isArray(orderBy)) {
-                            orderBy = [orderBy];
+                            orderBy = orderBy.split(",");
                         }
                         var sortArgs = [];
                         orderBy.forEach(function (s) {
-                            if (typeof (s) === "string") {
-                                sortArgs.push(s);
-                            } else {
-                                sortArgs.push([s.col, s.direction === "desc"]);
+                            if(!Array.isArray(s)){
+                                s = s.split(" ") ;
+                            }
+                            if(s.length === 1){
+                                sortArgs.push(s[0]);
+                            }else{
+                                sortArgs.push([s[0], s[1].toLowerCase() === "desc"]);
                             }
                         });
                         chain = chain.compoundsort(sortArgs);
