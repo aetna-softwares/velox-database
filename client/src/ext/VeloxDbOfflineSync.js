@@ -127,7 +127,7 @@
                     tables.push(context.args[0][k].table||k) ;
                     getJoinTables(tables, context.args[0][k].joinFetch) ;
                 }) ;
-            }else{
+            }else if(Array.isArray(context.args[2])){
                 getJoinTables(tables, context.args[2]) ;
             }
             this.sync(tables, function(err){
