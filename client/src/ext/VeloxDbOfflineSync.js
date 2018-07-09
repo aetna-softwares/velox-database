@@ -437,10 +437,11 @@
                 changeSet.forEach(function(change){
                     if(change.action === "insert"){
                         change.record.velox_version_record = 0 ;    
-                    } else {
+                        change.record.velox_version_date = new Date();
+                    } else if(change.action === "update" || change.action === "auto" || !change.action){
                         change.record.velox_version_record = change.record.velox_version_record!==undefined?change.record.velox_version_record+1:0;
+                        change.record.velox_version_date = new Date();
                     }
-                    change.record.velox_version_date = new Date();
                     change.record = this._prepareSerializableRecord(change.table, change.record, schema) ;
                 }.bind(this)) ;
                 saveOfflineChange(changeSet);
