@@ -415,6 +415,8 @@
                             try{
                                 rec[col.name] = JSON.parse(rec[col.name]) ;
                             }catch(e){}
+                        }else if(value === null || value === undefined){
+                            rec[col.name] = [] ;
                         }else{
                             rec[col.name] = [rec[col.name]] ;
                         }
