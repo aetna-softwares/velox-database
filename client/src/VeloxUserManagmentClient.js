@@ -1,3 +1,4 @@
+/*global define*/
 ; (function (global, factory) {
         if (typeof exports === 'object' && typeof module !== 'undefined') {
         module.exports = factory() ;
@@ -62,12 +63,20 @@
         //add auth api entry
         var activateEndPoint = client.options.activateEndPoint || "activateUser" ;
         var ajaxActivate = client._createEndPointFunction(activateEndPoint , "POST", [ "activationToken", "password" ]) ;
-        var activateFun = function(token, password, callback){
+        var activateFun = function(token, password, directLogin, callback){
+            if(typeof(directLogin) === "function"){
+                callback = directLogin;
+                directLogin = false ;
+            }
             ajaxActivate.bind(client)(token, password, function(err, user){
                 if(err){
                     return callback(err) ;
                 }
-                callback(null, user) ;
+                if(directLogin){
+                    authFun(user.login, password, callback) ;
+                }else{
+                    callback(null, user) ;
+                }
             }.bind(client)) ;
         } ;
         client._registerEndPointFunction(activateEndPoint, activateFun) ;

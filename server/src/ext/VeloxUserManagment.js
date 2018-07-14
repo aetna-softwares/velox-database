@@ -1594,6 +1594,7 @@ class VeloxUserManagment{
             "disabled BOOLEAN DEFAULT FALSE",
             "active BOOLEAN DEFAULT FALSE",
             "activation_token VARCHAR(40)",
+            "lang VARCHAR(5)",
             "profile_code VARCHAR(30) REFERENCES velox_user_profile(code)",
         ].concat(metaLines) ;
         if(backend === "pg"){
