@@ -818,13 +818,9 @@ class VeloxUserManagment{
                         if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
 
                             let user = this.context.req.user ;
-                            let currentRealm = this.context.req.currentRealm ;
 
                             if(action === "insert"){
-                                //on insert, force the realm and user col if any
-                                if(currentRealm && table.realmCol && table.realmCol.indexOf(".") === -1 && !record[table.realmCol]){
-                                    record[table.realmCol] = currentRealm;
-                                }
+                                //on insert, force user col if any
                                 if(tableName !== 'velox_user' && table.userCol && table.userCol.indexOf(".") === -1 && record[table.userCol]){
                                     record[table.userCol] = user.uid;
                                 }
@@ -934,9 +930,6 @@ class VeloxUserManagment{
                                     var realmColPath = table.realmCol.split(".") ;
 
                                     if(realmColPath.length === 1){
-                                        if(record[table.realmCol] !== currentRealm){
-                                            return callback("You're not allowed to set realm "+record[table.realmCol]+" in table "+table.name) ;
-                                        }
                                         if(authorizedLevelsOnRealm.indexOf(profileLevel) === -1){
                                             return callback("You're not allowed for action "+action+" on table "+table.name) ;
                                         }
@@ -1147,20 +1140,20 @@ class VeloxUserManagment{
             return callback("Google CLIENT ID missing") ;
         }
         //see documentation https://developers.google.com/identity/sign-in/web/backend-auth
-        var auth = new GoogleAuth;
-        var client = new auth.OAuth2(this.options.google.clientID, '', '');
-        client.verifyIdToken(
-            token,
-            this.options.google.clientID,
-            function(err, login) {
-                if(err){ return callback(err); }
+        // var auth = new GoogleAuth;
+        // var client = new auth.OAuth2(this.options.google.clientID, '', '');
+        // client.verifyIdToken(
+        //     token,
+        //     this.options.google.clientID,
+        //     function(err, login) {
+        //         if(err){ return callback(err); }
 
-                var payload = login.getPayload();
-                callback(null, payload) ;
-                var userid = payload['sub'];
-                // If request specified a G Suite domain:
-                //var domain = payload['hd'];
-            });
+        //         var payload = login.getPayload();
+        //         callback(null, payload) ;
+        //         var userid = payload['sub'];
+        //         // If request specified a G Suite domain:
+        //         //var domain = payload['hd'];
+        //     });
     }
 
     /**
