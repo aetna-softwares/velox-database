@@ -929,15 +929,13 @@ class VeloxUserManagment{
                                     //check if realm is authorized
                                     var realmColPath = table.realmCol.split(".") ;
 
-                                    if(realmColPath.length === 1){
-                                        if(authorizedLevelsOnRealm.indexOf(profileLevel) === -1){
-                                            return callback("You're not allowed for action "+action+" on table "+table.name) ;
-                                        }
-                                        return callback(); //OK
-                                    }else if(realmColPath.length > 1){
-                                        //search realm on related table
+                                    if(realmColPath.length > 0){
+                                        //check realm realm on related table
 
-                                        var currentTable = realmColPath[0] ;
+                                        var currentTable = table;
+                                        if(realmColPath.length>1){
+                                            currentTable = realmColPath[0] ;
+                                        } 
                                         var from = `FROM ${currentTable}` ;
                                         realmColPath.forEach((p, i)=>{
                                             if(i === realmColPath.length-1){
@@ -952,11 +950,14 @@ class VeloxUserManagment{
                                         }) ;
 
                                         let params = [] ;
-                                        let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
-                                        let where = Object.keys(whereCols).map((thisCol)=>{
-                                            params.push(record[thisCol]) ;
-                                            return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
-                                        }).join(" AND ") ;
+                                        let where = table+"."+realmColPath[0]+ " = $"+params.length ;
+                                        if(realmColPath.length>1){
+                                            let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
+                                            where = Object.keys(whereCols).map((thisCol)=>{
+                                                params.push(record[thisCol]) ;
+                                                return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                            }).join(" AND ") ;
+                                        }
 
                                         var sql = `(SELECT 1
                                             ${from} 
