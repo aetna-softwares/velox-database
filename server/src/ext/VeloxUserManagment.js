@@ -1325,23 +1325,29 @@ class VeloxUserManagment{
             password = null;
         }
         db.transaction((client, done)=>{
-            let sql = "SELECT * FROM velox_user WHERE activation_token = $1 AND active = FALSE" ;
+            let sql = "SELECT * FROM velox_user WHERE activation_token = $1" ;
             let params = [activationToken];
             client._query(sql, params, (err, results)=>{
                 if(err){ return done(err); }
 
                 if(results.rows.length === 0){
-                    return done("Invalid token") ;
+                    return done("INVALID_TOKEN") ;
                 }
 
                 if(results.rows.length > 1){
                     //there is a problem in the configuration somewhere
                     db.logger.error("The activation token "+activationToken+" exists many times ") ;
-                    return done("Invalid token") ;
+                    return done("INVALID_TOKEN") ;
                 }
 
                 let user = results.rows[0] ;
-                var updateData = {activation_token: '', active: true, uid: user.uid} ;
+
+                if(user.active){
+                    //already active
+                    return done("ALREADY_ACTIVE") ;
+                }
+
+                var updateData = {active: true, uid: user.uid} ;
                 if(password){
                     updateData.password = password ;
                 }
