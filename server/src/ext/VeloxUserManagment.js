@@ -950,8 +950,11 @@ class VeloxUserManagment{
                                         }) ;
 
                                         let params = [] ;
-                                        let where = table+"."+realmColPath[0]+ " = $"+params.length ;
+                                        let where = "";
                                         if(realmColPath.length>1){
+                                            where = table.name+"."+realmColPath[0]+ " = $"+params.length ;
+                                            params.push(record[realmColPath[0]]) ;
+                                        }else if(realmColPath.length>1){
                                             let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
                                             where = Object.keys(whereCols).map((thisCol)=>{
                                                 params.push(record[thisCol]) ;
