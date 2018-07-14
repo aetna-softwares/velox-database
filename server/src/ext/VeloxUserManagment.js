@@ -932,7 +932,7 @@ class VeloxUserManagment{
                                     if(realmColPath.length > 0){
                                         //check realm realm on related table
 
-                                        var currentTable = table;
+                                        var currentTable = table.name;
                                         if(realmColPath.length>1){
                                             currentTable = realmColPath[0] ;
                                         } 
