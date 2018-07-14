@@ -399,7 +399,13 @@ class VeloxSqlSync{
 
     _setLogError(db, changeSet, error, callback){
         db.transaction((tx, done)=>{
-            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: JSON.stringify(error)}, (err)=>{
+            var strError = "" ;
+            if(error.stack){
+                strError = error.stack ;
+            }else{
+                strError = JSON.stringify(error) ;
+            }
+            tx.update("velox_sync_log", {uid: changeSet.uuid, status: 'error', error_msg: strError}, (err)=>{
                 if(err){ return done(err) ;}
                 if(this.emailAlert !== "none"){
                     var email = {
