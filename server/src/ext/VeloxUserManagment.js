@@ -951,7 +951,7 @@ class VeloxUserManagment{
 
                                         let params = [] ;
                                         let where = "";
-                                        if(realmColPath.length>1){
+                                        if(realmColPath.length === 1){
                                             where = table.name+"."+realmColPath[0]+ " = $"+params.length ;
                                             params.push(record[realmColPath[0]]) ;
                                         }else if(realmColPath.length>1){
