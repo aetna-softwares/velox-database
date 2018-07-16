@@ -465,6 +465,9 @@
     };
 
     VeloxDbOfflineLoki.prototype.multiread = function (reads, callback) {
+        if(reads.length === 0){
+            return callback(null, {}) ;
+        }
         this._doASearch(reads, {}, callback);
     };
 
@@ -496,7 +499,7 @@
                 next();
             }.bind(this));
         } else {
-            callback<("Unkown search action for " + JSON.stringify(r));
+            callback("Unkown search action for " + JSON.stringify(r));
         }
     };
 
