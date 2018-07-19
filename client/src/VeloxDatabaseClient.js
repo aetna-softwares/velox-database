@@ -1,3 +1,4 @@
+/* global define */
 ; (function (global, factory) {
         if (typeof exports === 'object' && typeof module !== 'undefined') {
         module.exports = factory() ;
@@ -27,6 +28,17 @@
     }
 
 
+    function initExtension(extensionsToInit, callback){
+        if(extensionsToInit.length === 0){
+            return callback() ;
+        }
+        var extension = extensionsToInit.shift() ;
+        extension.init(this, function(err){
+            if(err){ return callback(err); }
+            initExtension.bind(this)(extensionsToInit, callback) ;
+        }.bind(this)) ;
+    }
+
 
     VeloxDatabaseClient.prototype.init = function(client, callback){
         this.client = client ;
@@ -36,8 +48,6 @@
             this.dbEntryPoint = this.dbEntryPoint+"/" ;
         }
 
-        
-
         //add extension features
         VeloxDatabaseClient.extensions.forEach(function(extension){
             if(extension.extendsObj){
@@ -46,6 +56,8 @@
                 }.bind(this));
             }
         }.bind(this));
+
+        initExtension.bind(this)(VeloxDatabaseClient.extensions.slice(), callback) ;
 
         this.getSchema(function(err, schema){
         //client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){

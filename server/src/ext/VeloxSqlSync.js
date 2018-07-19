@@ -194,6 +194,12 @@ class VeloxSqlSync{
                                 records.push(change);
                                 cb();
                             }else{ //insert or update
+                                if(!schema[change.table].pk.every((pk)=>{ return change.record[pk] !== undefined && change.record[pk] !== null ; })){
+                                    //no PK provided, it must be an insert
+                                    change.action === "insert" ;
+                                    records.push(change);
+                                    return cb() ;
+                                }
                                 client.getByPk(change.table, change.record, (err, recordDb)=>{
                                     if(err){ return cb(err); }
                                     if(!recordDb){

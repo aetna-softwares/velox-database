@@ -236,8 +236,29 @@
         tableSettings = settings;
     };
 
+
+    extension.init = function(db){
+        db.client.addAjaxInterceptor(function(err, request, response, next){
+            if(request.url === "api/auth/info"){
+                if(response.status === 0){
+                    //offline
+                    var lastUser = localStorage.getItem("velox_current_user");
+                    console.log("Use last user", err, lastUser, response) ;
+                    if(lastUser){
+                        return next({
+                            status: 200,
+                            response: JSON.parse(lastUser),
+                            responseText: lastUser,
+                            url: response.url
+                        }) ;
+                    }
+                }
+            }
+            next() ;
+        }) ;
+    } ;
+
     var prepareDone = false;
-    
     /**
      * init local storage
      * 
@@ -379,6 +400,8 @@
                     }else{
                         val = ""+val ;
                     }
+                }else if(val && typeof(val) === "object" && val.constructor === Date){
+                    val = val.toISOString() ;
                 }
                 preparedRecord[col.name] = val ;
             }
