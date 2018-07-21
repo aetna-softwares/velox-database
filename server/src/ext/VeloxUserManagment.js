@@ -933,35 +933,32 @@ class VeloxUserManagment{
                                         //check realm realm on related table
 
                                         var currentTable = table.name;
+                                        var from = `FROM velox_link_user_realm r JOIN velox_user u ON r.user_uid = u.uid
+                                        JOIN velox_user_profile p ON COALESCE(r.profile_code, u.profile_code) = p.code` ;
+                                        let where = "";
+                                        let params = [] ;
                                         if(realmColPath.length>1){
                                             currentTable = realmColPath[0] ;
-                                        } 
-                                        var from = `FROM ${currentTable}` ;
-                                        realmColPath.forEach((p, i)=>{
-                                            if(i === realmColPath.length-1){
-                                                    from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
-                                                JOIN velox_user u ON r.user_uid = u.uid
-                                                JOIN velox_user_profile p ON COALESCE(r.profile_code, u.profile_code) = p.code
-                                                ` ;
-                                            }else if(i>0){
-                                                from += ` JOIN ${p} `+createJoinOnFromFk(this.cache.schema, currentTable, p) ;
-                                                currentTable = p ;
+                                            var columnName = realmColPath[realmColPath.length-1] ;
+                                            for(let i=realmColPath.length-2; i>0; i--){
+                                                var tableName = realmColPath[i] ;
+                                                if(i===realmColPath.length-2){
+                                                    from += ` JOIN ${tableName} ON ${tableName}.${columnName} = r.realm_code` ;
+                                                }else{
+                                                    var previousTable = realmColPath[i+1] ;
+                                                    from += ` JOIN ${tableName} `+createJoinOnFromFk(this.cache.schema, previousTable, tableName) ;
+                                                }
                                             }
-                                        }) ;
-
-                                        let params = [] ;
-                                        let where = "";
-                                        if(realmColPath.length === 1){
-                                            params.push(record[realmColPath[0]]) ;
-                                            where = table.name+"."+realmColPath[0]+ " = $"+params.length ;
-                                        }else if(realmColPath.length>1){
                                             let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
                                             where = Object.keys(whereCols).map((thisCol)=>{
                                                 params.push(record[thisCol]) ;
                                                 return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
                                             }).join(" AND ") ;
+                                        } else {
+                                            where = "r.realm_code = $"+params.length ;
+                                            params.push(record[realmColPath[0]]) ;
                                         }
-
+                                        
                                         var sql = `(SELECT 1
                                             ${from} 
                                             WHERE r.user_uid = '${this.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
