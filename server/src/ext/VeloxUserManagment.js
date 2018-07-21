@@ -824,6 +824,10 @@ class VeloxUserManagment{
                                 if(tableName !== 'velox_user' && table.userCol && table.userCol.indexOf(".") === -1 && record[table.userCol]){
                                     record[table.userCol] = user.uid;
                                 }
+
+                                if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && !record[table.realmCol] && user.realms.length>0){
+                                    record[table.realmCol] = user.realms[0].realm_code;
+                                }
                             }
 
                             if(table.rules){
