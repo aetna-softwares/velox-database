@@ -944,7 +944,7 @@ class VeloxUserManagment{
                                         if(realmColPath.length>1){
                                             currentTable = realmColPath[0] ;
                                             var columnName = realmColPath[realmColPath.length-1] ;
-                                            for(let i=realmColPath.length-2; i>0; i--){
+                                            for(let i=realmColPath.length-2; i>=0; i--){
                                                 var tableName = realmColPath[i] ;
                                                 if(i===realmColPath.length-2){
                                                     from += ` JOIN ${tableName} ON ${tableName}.${columnName} = r.realm_code` ;
