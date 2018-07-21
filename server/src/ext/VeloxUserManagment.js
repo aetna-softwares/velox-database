@@ -955,8 +955,8 @@ class VeloxUserManagment{
                                                 return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
                                             }).join(" AND ") ;
                                         } else {
-                                            where = "r.realm_code = $"+params.length ;
                                             params.push(record[realmColPath[0]]) ;
+                                            where = "r.realm_code = $"+params.length ;
                                         }
                                         
                                         var sql = `(SELECT 1
