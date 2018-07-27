@@ -57,65 +57,68 @@
             }
         }.bind(this));
 
-        initExtension.bind(this)(VeloxDatabaseClient.extensions.slice(), callback) ;
+        initExtension.bind(this)(VeloxDatabaseClient.extensions.slice(), function(err){
+            if(err){ return callback(err) ;}
 
-        this.getSchema(function(err, schema){
-        //client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){
-            if(err){ 
-                if(err == "401"){
-                    err = "Access to schema required login, you should set /"+this.dbEntryPoint+"schema as public resources" ; 
-                }
-                return callback(err) ;
-            }
-            this.schema = schema;
-
-            //add db api entry
-            var dbApi = this ;
-            var dbApiPath = this.dbEntryPoint.split("/").filter(function(p){ return !!p.trim() ;}) ;
-            var currentParent = client;
-            dbApiPath.forEach(function(p, i){
-                if(i<dbApiPath.length-1){
-                    if(!currentParent[p]){
-                        currentParent[p] = {} ;
+            this.getSchema(function(err, schema){
+            //client.ajax(this.dbEntryPoint+"schema", "GET", null, "json", function(err, schema){
+                if(err){ 
+                    if(err == "401"){
+                        err = "Access to schema required login, you should set /"+this.dbEntryPoint+"schema as public resources" ; 
                     }
-                }else{
-                    currentParent[p] = dbApi ;
+                    return callback(err) ;
                 }
-            }) ;
-            client.__velox_database = dbApi ;
-
-            //add sub api entry for each table
-            Object.keys(schema).forEach(function(table){
-                dbApi[table] = {} ;
-
-                dbApi[table].insert = function(record, callback){
-                    this.insert(table, record, callback) ;
-                }.bind(this) ;
-                dbApi[table].update = function(record, callback){
-                    this.update(table, record, callback) ;
-                }.bind(this) ;
-                dbApi[table].remove = function(pkOrRecord, callback){
-                    this.remove(table, pkOrRecord, callback) ;
-                }.bind(this) ;
-                dbApi[table].getPk = function(record, callback){
-                    this.getPk(table, record, callback) ;
-                }.bind(this) ;
-                dbApi[table].getByPk = function(pkOrRecord, joinFetch, callback){
-                    this.getByPk(table, pkOrRecord, joinFetch, callback) ;
-                }.bind(this) ;
-                dbApi[table].search = function(search, joinFetch, orderBy, offset, limit, callback){
-                    this.search(table, search, joinFetch, orderBy, offset, limit, callback) ;
-                }.bind(this) ;
-                dbApi[table].searchFirst = function(search, joinFetch, orderBy, callback){
-                    this.searchFirst(table, search,joinFetch, orderBy, callback) ;
-                }.bind(this) ;
+                this.schema = schema;
+    
+                //add db api entry
+                var dbApi = this ;
+                var dbApiPath = this.dbEntryPoint.split("/").filter(function(p){ return !!p.trim() ;}) ;
+                var currentParent = client;
+                dbApiPath.forEach(function(p, i){
+                    if(i<dbApiPath.length-1){
+                        if(!currentParent[p]){
+                            currentParent[p] = {} ;
+                        }
+                    }else{
+                        currentParent[p] = dbApi ;
+                    }
+                }) ;
+                client.__velox_database = dbApi ;
+    
+                //add sub api entry for each table
+                Object.keys(schema).forEach(function(table){
+                    dbApi[table] = {} ;
+    
+                    dbApi[table].insert = function(record, callback){
+                        this.insert(table, record, callback) ;
+                    }.bind(this) ;
+                    dbApi[table].update = function(record, callback){
+                        this.update(table, record, callback) ;
+                    }.bind(this) ;
+                    dbApi[table].remove = function(pkOrRecord, callback){
+                        this.remove(table, pkOrRecord, callback) ;
+                    }.bind(this) ;
+                    dbApi[table].getPk = function(record, callback){
+                        this.getPk(table, record, callback) ;
+                    }.bind(this) ;
+                    dbApi[table].getByPk = function(pkOrRecord, joinFetch, callback){
+                        this.getByPk(table, pkOrRecord, joinFetch, callback) ;
+                    }.bind(this) ;
+                    dbApi[table].search = function(search, joinFetch, orderBy, offset, limit, callback){
+                        this.search(table, search, joinFetch, orderBy, offset, limit, callback) ;
+                    }.bind(this) ;
+                    dbApi[table].searchFirst = function(search, joinFetch, orderBy, callback){
+                        this.searchFirst(table, search,joinFetch, orderBy, callback) ;
+                    }.bind(this) ;
+                }.bind(this)) ;
+    
+                
+    
+    
+                callback() ;
             }.bind(this)) ;
+        }) ;
 
-            
-
-
-            callback() ;
-        }.bind(this)) ;
     } ;
 
 
