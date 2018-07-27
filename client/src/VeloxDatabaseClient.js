@@ -117,7 +117,7 @@
     
                 callback() ;
             }.bind(this)) ;
-        }) ;
+        }.bind(this)) ;
 
     } ;
 
