@@ -33,10 +33,19 @@
             return callback() ;
         }
         var extension = extensionsToInit.shift() ;
-        extension.init(this, function(err){
-            if(err){ return callback(err); }
-            initExtension.bind(this)(extensionsToInit, callback) ;
-        }.bind(this)) ;
+        if(extension.init.length === 1){
+            try{
+                extension.init(this) ;
+            }catch(err){
+                return callback(err);
+            }
+            callback() ;
+        }else{
+            extension.init(this, function(err){
+                if(err){ return callback(err); }
+                initExtension.bind(this)(extensionsToInit, callback) ;
+            }.bind(this)) ;
+        }
     }
 
 
