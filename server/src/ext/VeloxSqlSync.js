@@ -491,7 +491,7 @@ class VeloxSqlSync{
             "uid VARCHAR(40) PRIMARY KEY",
             "client_date timestamp without time zone",
             "sync_date timestamp without time zone",
-            "data TEXT",
+            "data JSONB",
             "status VARCHAR(20)",
             "error_msg TEXT"
         ] ;
