@@ -298,7 +298,7 @@ class VeloxSqlModifTracker{
                 version_date timestamp without time zone,
                 version_user varchar(128),
                 table_name varchar(128),
-                table_uid varchar(128),
+                table_uid varchar(255),
                 column_name varchar(128),
                 column_before varchar(255),
                 column_after varchar(255),
