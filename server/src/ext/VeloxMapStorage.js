@@ -187,7 +187,7 @@ class VeloxMapStorage{
     }
 
     /**
-     * Create the table velox_binary if not exists
+     * Create the table velox_map if not exists
      * @param {string} backend 
      */
     getCreateTableMap(backend){
