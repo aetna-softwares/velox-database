@@ -190,7 +190,7 @@ class VeloxMapStorage{
      * Create the table velox_binary if not exists
      * @param {string} backend 
      */
-    getCreateTableBinary(backend){
+    getCreateTableMap(backend){
         if(backend === "pg"){
             return `
             CREATE TABLE IF NOT EXISTS velox_map (
