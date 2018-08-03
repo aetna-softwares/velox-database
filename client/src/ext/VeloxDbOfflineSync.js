@@ -702,11 +702,17 @@
                             });
                             var distantVersions = {};
                             distantTablesVersions.forEach(function (distantTable) {
+                                if(distantTable.force_refresh){
+                                    if(localVersions[distantTable.table_name] && localVersions[distantTable.table_name]<distantTable.force_refresh){
+                                        //server request that all client that did not reach version "force_refresh" must do a full refresh
+                                        localVersions[distantTable.table_name] = -1;
+                                    }
+                                }
                                 distantVersions[distantTable.table_name] = distantTable.version_table;
                             });
 
                             //add all tables with different version number
-                            var tableToSync = tables.filter(function(table){
+                            var tablesToSync = tables.filter(function(table){
                                 var distantVersion = distantVersions[table] ;
                                 var localVersion = localVersions[table] ;
                                 if(!localVersion || tableToForceRefresh[table]){
@@ -725,8 +731,8 @@
                                 var tableDef = this.schema[tableName] ;
                                 if(tableDef.viewOfTables){
                                     tableDef.viewOfTables.some(function(subTable){
-                                        if(tableToSync.indexOf(subTable.name) !== -1){
-                                            tableToSync.push(tableName) ;
+                                        if(tablesToSync.indexOf(subTable.name) !== -1){
+                                            tablesToSync.push(tableName) ;
                                             return true ;
                                         }
                                     }) ;
@@ -734,28 +740,69 @@
                             }.bind(this)) ;
 
                             //keep only the offline tables
-                            tableToSync = tableToSync.filter(function(tableName){
+                            tablesToSync = tablesToSync.filter(function(tableName){
                                 return isOffline(tableName) ;
                             }) ;
 
-                            syncTables.bind(this)(tableToSync, localVersions, function (err) {
-                                if (err) {
-                                    syncing = false;
-                                    return callback(err);
+
+                            var multiread = {};
+                            for(var i=0; i<tablesToSync.length; i++){
+                                var table = tablesToSync[i];
+                                var search = { velox_version_table: { ope: ">", value: localVersions[table] } } ;
+
+                                var tableDef = this.schema[table] ;
+                                if(tableDef.viewOfTables){
+                                    var searches = [] ;
+                                    tableDef.viewOfTables.forEach(function(subTable){
+                                        var s = {} ;
+                                        if(subTable.versionColumn){
+                                            s[subTable.versionColumn] = { ope: ">", value: localVersions[subTable.name] } ;
+                                        }else{
+                                            s[subTable.name+"_velox_version_table"] = { ope: ">", value: localVersions[subTable.name] } ;
+                                        }
+                                        searches.push(s) ;
+                                    }) ;
+                                    search = { $or : searches } ; 
                                 }
 
-                                //update table versions
-                                var updateVersionChanges = [] ;
-                                distantTablesVersions.forEach(function(version){
-                                    updateVersionChanges.push({table: "velox_modif_table_version", record : version}) ;
-                                }) ;
-                                storage.transactionalChanges(updateVersionChanges, function (err) {
-                                    if (err) { 
-                                        syncing = false;
-                                        return callback(err); 
+                                multiread[table] = {search: search} ;
+                                multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, table_version: { ope: ">", value: localVersions[table] } }} ;
+                            }
+
+                            this.constructor.prototype.multiread.bind(this)(multiread, function(err,reads){
+                                if (err) { return callback(err); }
+                                var changeSet = [] ;
+                                for(var i=0; i<tablesToSync.length; i++){
+                                    var table = tablesToSync[i] ;
+                                    var newRecords = reads[table] ;
+                                    var deletedRecords = reads[table+"_delete"] ;
+                                    var maxTableVersion = -1;
+                                    for(var y=0; y<newRecords.length; y++){
+                                        var r = newRecords[y] ;
+                                        changeSet.push({ table: table, record: r, action: "auto" }) ;
+                                        if(Number(r.velox_version_table) > maxTableVersion){
+                                            maxTableVersion = Number(r.velox_version_table) ;
+                                        }
+                                    }
+                                    if(maxTableVersion !== -1){
+                                        changeSet.push({table: "velox_modif_table_version", record : {table_name: table, version_table: ""+maxTableVersion, version_date: new Date()}}) ;
+                                    }
+                                    for(var y=0; y<deletedRecords.length; y++){
+                                        var r = deletedRecords[y] ;
+                                        var record = {} ;
+                                        var splittedPk = r.table_uid.split("$_$") ;
+                                        this.schema[table].pk.forEach(function(pk, i){
+                                            record[pk] = splittedPk[i] ;
+                                        }) ;
+
+                                        changeSet.push({ table: table, record: record, action: "remove" });
                                     }
                                     
-                                    tableToSync.forEach(function(table){
+                                }
+                                //apply in local storage
+                                storage.transactionalChanges(changeSet, function (err) {
+                                    if (err) { return callback(err); }
+                                    tablesToSync.forEach(function(table){
                                         //reset the force refresh
                                         tableToForceRefresh[table] = false ;
                                     }) ;
@@ -764,8 +811,7 @@
                                     this.lastSyncDate = new Date() ;
                                     callback();
                                 }.bind(this));
-
-                            }.bind(this));
+                            }.bind(this)) ;
                         }.bind(this));
                     }.bind(this));
                 }.bind(this));
@@ -806,60 +852,7 @@
             callbackCalled = true ;
             pCallback(err) ;
         } ;
-        var multiread = {};
-        for(var i=0; i<tablesToSync.length; i++){
-            var table = tablesToSync[i];
-            var search = { velox_version_table: { ope: ">", value: localVersions[table] } } ;
-
-            var tableDef = this.schema[table] ;
-            if(tableDef.viewOfTables){
-                var searches = [] ;
-                tableDef.viewOfTables.forEach(function(subTable){
-                    var s = {} ;
-                    if(subTable.versionColumn){
-                        s[subTable.versionColumn] = { ope: ">", value: localVersions[subTable.name] } ;
-                    }else{
-                        s[subTable.name+"_velox_version_table"] = { ope: ">", value: localVersions[subTable.name] } ;
-                    }
-                    searches.push(s) ;
-                }) ;
-                search = { $or : searches } ; 
-            }
-
-            multiread[table] = {search: search} ;
-            multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, table_version: { ope: ">", value: localVersions[table] } }} ;
-        }
-
-        this.constructor.prototype.multiread.bind(this)(multiread, function(err,reads){
-            if (err) { return callback(err); }
-            var changeSet = [] ;
-            for(var i=0; i<tablesToSync.length; i++){
-                var table = tablesToSync[i] ;
-                var newRecords = reads[table] ;
-                var deletedRecords = reads[table+"_delete"] ;
-
-                for(var y=0; y<newRecords.length; y++){
-                    var r = newRecords[y] ;
-                    changeSet.push({ table: table, record: r, action: "auto" }) ;
-                }
-                for(var y=0; y<deletedRecords.length; y++){
-                    var r = deletedRecords[y] ;
-                    var record = {} ;
-                    var splittedPk = r.table_uid.split("$_$") ;
-                    this.schema[table].pk.forEach(function(pk, i){
-                        record[pk] = splittedPk[i] ;
-                    }) ;
-
-                    changeSet.push({ table: table, record: record, action: "remove" });
-                }
-                
-            }
-            //apply in local storage
-            storage.transactionalChanges(changeSet, function (err) {
-                if (err) { return callback(err); }
-                callback();
-            }.bind(this));
-        }.bind(this)) ;
+        
     }
 
     
