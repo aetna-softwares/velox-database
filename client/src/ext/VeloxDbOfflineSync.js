@@ -395,10 +395,8 @@
                         val = JSON.stringify(val) ;
                     }else if(val.toNumber){
                         val = val.toNumber() ;
-                    }else if(val.toString){
-                        val = val.toString() ;
-                    }else{
-                        val = ""+val ;
+                    }else {
+                        val = JSON.stringify(val) ;
                     }
                 }else if(val && typeof(val) === "object" && val.constructor === Date){
                     val = val.toISOString() ;
