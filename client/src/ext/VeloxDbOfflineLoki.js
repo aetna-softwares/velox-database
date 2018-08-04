@@ -189,6 +189,10 @@
                 var result = this.remove(change.table, change.record) ;
                 if (result.err) { return callback(result.err); }
                 results.push({ action: "remove", table: change.table, record: change.record });
+            } else if (change.action === "removeWhere") {
+                var result = this.removeWhere(change.table, change.record) ;
+                if (result.err) { return callback(result.err); }
+                results.push({ action: "removeWhere", table: change.table, record: change.record });
             } else {
                 var result = this.getByPk(change.table, change.record);
                 if (result.err) { return callback(result.err); }

@@ -748,25 +748,32 @@
                             var multiread = {};
                             for(var i=0; i<tablesToSync.length; i++){
                                 var table = tablesToSync[i];
-                                var search = { velox_version_table: { ope: ">", value: localVersions[table] } } ;
+                                var search = {} ;
+                                if(localVersions[table]>=0){
+                                    search = { velox_version_table: { ope: ">", value: localVersions[table] } } ;
+                                }
 
                                 var tableDef = this.schema[table] ;
                                 if(tableDef.viewOfTables){
                                     var searches = [] ;
                                     tableDef.viewOfTables.forEach(function(subTable){
                                         var s = {} ;
-                                        if(subTable.versionColumn){
-                                            s[subTable.versionColumn] = { ope: ">", value: localVersions[subTable.name] } ;
-                                        }else{
-                                            s[subTable.name+"_velox_version_table"] = { ope: ">", value: localVersions[subTable.name] } ;
+                                        if(localVersions[subTable.name]>=0){
+                                            if(subTable.versionColumn){
+                                                s[subTable.versionColumn] = { ope: ">", value: localVersions[subTable.name] } ;
+                                            }else{
+                                                s[subTable.name+"_velox_version_table"] = { ope: ">", value: localVersions[subTable.name] } ;
+                                            }
+                                            searches.push(s) ;
                                         }
-                                        searches.push(s) ;
                                     }) ;
                                     search = { $or : searches } ; 
                                 }
 
                                 multiread[table] = {search: search} ;
-                                multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, table_version: { ope: ">", value: localVersions[table] } }} ;
+                                if(localVersions[table]>=0){
+                                    multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, table_version: { ope: ">", value: localVersions[table] } }} ;
+                                }
                             }
 
                             this.constructor.prototype.multiread.bind(this)(multiread, function(err,reads){
@@ -774,12 +781,22 @@
                                 var changeSet = [] ;
                                 for(var i=0; i<tablesToSync.length; i++){
                                     var table = tablesToSync[i] ;
+                                    
+
+                                    if(localVersions[table]===-1){
+                                        //remove all records
+                                        changeSet.push({ table: table, record: {}, action: "removeWhere" });
+                                    }
+
                                     var newRecords = reads[table] ;
-                                    var deletedRecords = reads[table+"_delete"] ;
                                     var maxTableVersion = -1;
                                     for(var y=0; y<newRecords.length; y++){
                                         var r = newRecords[y] ;
-                                        changeSet.push({ table: table, record: r, action: "auto" }) ;
+                                        var action = "auto" ;
+                                        if(localVersions[table]===-1){
+                                            action = "insert" ;
+                                        }
+                                        changeSet.push({ table: table, record: r, action: action }) ;
                                         if(Number(r.velox_version_table) > maxTableVersion){
                                             maxTableVersion = Number(r.velox_version_table) ;
                                         }
@@ -787,15 +804,19 @@
                                     if(maxTableVersion !== -1){
                                         changeSet.push({table: "velox_modif_table_version", record : {table_name: table, version_table: ""+maxTableVersion, version_date: new Date()}}) ;
                                     }
-                                    for(var y=0; y<deletedRecords.length; y++){
-                                        var r = deletedRecords[y] ;
-                                        var record = {} ;
-                                        var splittedPk = r.table_uid.split("$_$") ;
-                                        this.schema[table].pk.forEach(function(pk, i){
-                                            record[pk] = splittedPk[i] ;
-                                        }) ;
 
-                                        changeSet.push({ table: table, record: record, action: "remove" });
+                                    if(localVersions[table]>=0){
+                                        var deletedRecords = reads[table+"_delete"] ;
+                                        for(var y=0; y<deletedRecords.length; y++){
+                                            var r = deletedRecords[y] ;
+                                            var record = {} ;
+                                            var splittedPk = r.table_uid.split("$_$") ;
+                                            this.schema[table].pk.forEach(function(pk, i){
+                                                record[pk] = splittedPk[i] ;
+                                            }) ;
+
+                                            changeSet.push({ table: table, record: record, action: "remove" });
+                                        }
                                     }
                                     
                                 }
