@@ -194,7 +194,7 @@ class VeloxSqlSync{
                                 records.push(change);
                                 cb();
                             }else{ //insert or update
-                                if(!schema[change.table].pk.every((pk)=>{ return change.record[pk] !== undefined && change.record[pk] !== null ; })){
+                                if(!schema[change.table].pk.every((pk)=>{ return change.record[pk] !== undefined && change.record[pk] !== null && !/^\$\{.*\}$/.test(change.record[pk]) ; })){
                                     //no PK provided, it must be an insert
                                     change.action === "insert" ;
                                     records.push(change);
