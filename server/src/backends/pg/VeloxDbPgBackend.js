@@ -444,90 +444,88 @@ class VeloxDbPgClient {
         this.getSchema((err, schema)=>{
             if(err){ return callback(err); }
 
-            this.getPrimaryKey(table, (err, pkColumns)=>{
-                if(err){ return callback(err); }
+            var pkColumns = schema[table].pk ;
 
-                if(pkColumns.length === 0){
-                    return callback("Error searching in table "+table+", no primary column for this table") ;
-                }
+            if(!pkColumns || pkColumns.length === 0){
+                return callback("Error searching in table "+table+", no primary column for this table") ;
+            }
 
-                //check given pk is consistent with table pk
-                if(typeof(pk) === "object"){
-                    //the given pk has the form {col1: "", col2: ""}
-                    if(Object.keys(pk).length < pkColumns.length){
-                        return callback("Error searching in table "+table+", the given PK has "+Object.keys(pk).length+" properties but PK has "+pkColumns.length) ;
-                    }
-                    for(let k of pkColumns){
-                        if(Object.keys(pk).indexOf(k) === -1){
-                            return callback("Error searching in table "+table+", the given PK miss "+k+" property") ;
-                        }
-                    }
-                }else{
-                    //the given pk is a simple value, assuming simple PK form
-                    if(pkColumns.length > 1){
-                        return callback("Error searching in table "+table+", the primary key should be composed of "+pkColumns.join(", "));
-                    }
-                    let formatedPk = {} ;
-                    formatedPk[pkColumns[0]] = pk ;
-                    pk = formatedPk ;
+            //check given pk is consistent with table pk
+            if(typeof(pk) === "object"){
+                //the given pk has the form {col1: "", col2: ""}
+                if(Object.keys(pk).length < pkColumns.length){
+                    return callback("Error searching in table "+table+", the given PK has "+Object.keys(pk).length+" properties but PK has "+pkColumns.length) ;
                 }
-
-                let params = [] ;
-                let selectFrom = null;
-                try{
-                    selectFrom = this._createFromWithJoin(table, joinFetch, params, schema) ;
-                }catch(e){
-                    return callback(e) ;
-                }
-                let select = selectFrom.select ;
-                let from = selectFrom.from ;
-                let aliases = selectFrom.aliases;
-                let where = [] ;
-                
-                
                 for(let k of pkColumns){
-                    params.push(pk[k]) ;
-                    where.push("t."+k+" = $"+params.length) ;
-                }
-
-                var orderByItems = [] ;
-
-                if(joinFetch){
-                    for(let join of joinFetch){
-                        this._addOrderByJoin(join, schema, orderByItems, aliases) ;
+                    if(Object.keys(pk).indexOf(k) === -1){
+                        return callback("Error searching in table "+table+", the given PK miss "+k+" property") ;
                     }
                 }
+            }else{
+                //the given pk is a simple value, assuming simple PK form
+                if(pkColumns.length > 1){
+                    return callback("Error searching in table "+table+", the primary key should be composed of "+pkColumns.join(", "));
+                }
+                let formatedPk = {} ;
+                formatedPk[pkColumns[0]] = pk ;
+                pk = formatedPk ;
+            }
 
-                if(orderByItems.length > 0){
-                    //there is order by clause in join fetch, force add the pk in order by
-                    let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
-                    if(!pkNames){ callback("No PK defined for table "+table) ;}
-                    orderByItems = [pkNames].concat(orderByItems) ;
+            let params = [] ;
+            let selectFrom = null;
+            try{
+                selectFrom = this._createFromWithJoin(table, joinFetch, params, schema) ;
+            }catch(e){
+                return callback(e) ;
+            }
+            let select = selectFrom.select ;
+            let from = selectFrom.from ;
+            let aliases = selectFrom.aliases;
+            let where = [] ;
+            
+            
+            for(let k of pkColumns){
+                params.push(pk[k]) ;
+                where.push("t."+k+" = $"+params.length) ;
+            }
+
+            var orderByItems = [] ;
+
+            if(joinFetch){
+                for(let join of joinFetch){
+                    this._addOrderByJoin(join, schema, orderByItems, aliases) ;
+                }
+            }
+
+            if(orderByItems.length > 0){
+                //there is order by clause in join fetch, force add the pk in order by
+                let pkNames = schema[table].pk.map((p)=>{ return "t."+p ;}).join(", ") ; 
+                if(!pkNames){ callback("No PK defined for table "+table) ;}
+                orderByItems = [pkNames].concat(orderByItems) ;
+            }
+            
+            let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
+            
+            if(orderByItems.length > 0){
+                sql += ` ORDER BY ${orderByItems.join(",")}` ;
+            }
+
+            this._query(sql, params, (err, results)=>{
+                if(err){ return callback(err) ;}
+                if(results.rows.length === 0){ return callback(null, null); }
+                if(!joinFetch){ return callback(null, results.rows[0]); }
+
+                //need some aggregate from joins
+                try{
+                    var records = this.constructResults(schema, table, aliases, results.rows, joinFetch) ;
+
+                    var record = records[0]||null ;
+                } catch (err) {
+                    return callback(err) ;
                 }
                 
-                let sql = `SELECT ${select.join(", ")} FROM ${from.join(" ")} WHERE ${where.join(" AND ")}` ;
-                
-                if(orderByItems.length > 0){
-                    sql += ` ORDER BY ${orderByItems.join(",")}` ;
-                }
+                callback(null, record) ;
 
-                this._query(sql, params, (err, results)=>{
-                    if(err){ return callback(err) ;}
-                    if(results.rows.length === 0){ return callback(null, null); }
-                    if(!joinFetch){ return callback(null, results.rows[0]); }
-
-                    //need some aggregate from joins
-                    try{
-                        var records = this.constructResults(schema, table, aliases, results.rows, joinFetch) ;
-
-                        var record = records[0]||null ;
-                    } catch (err) {
-                        return callback(err) ;
-                    }
-                    
-                    callback(null, record) ;
-
-                }) ;
             }) ;
         }) ;
     }
