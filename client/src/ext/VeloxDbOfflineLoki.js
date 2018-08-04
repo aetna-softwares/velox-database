@@ -111,7 +111,7 @@
 
     VeloxDbOfflineLoki.prototype.insert = function (table, record, callback) {
         try {
-            this.getCollection(table).insert(record);
+            this.getCollection(table).insert(this._sanatizeRecord(record));
         } catch (err) {
             if(callback) {callback(err);}
             return {err: err};
