@@ -409,7 +409,8 @@
             }
             var records = this._sanatizeRecord(records);
             var colsMuliple =  this.schema[table].columns.filter(function(col){ return col.type === "multiple" ;}) ;
-            if(colsMuliple.length > 0){
+            var colsJson =  this.schema[table].columns.filter(function(col){ return col.type === "jsonb" ;}) ;
+            if(colsMuliple.length > 0 || colsJson.length > 0){
                 for(var i=0; i<records.length; i++){
                     var rec = records[i] ;
                     for(var y=0; y<colsMuliple.length; y++){
@@ -425,8 +426,16 @@
                             rec[col.name] = [rec[col.name]] ;
                         }
                     }
+                    for(var y=0; y<colsJson.length; y++){
+                        var col = colsJson[y] ;
+                        var value = rec[col.name];
+                        if(typeof(value) === "string"){
+                            rec[col.name] = JSON.parse(value) ;
+                        }
+                    }
                 }
             }
+            
             if(joinFetch){
                 for(var i=0; i<records.length; i++){
                     var record = records[i] ;
