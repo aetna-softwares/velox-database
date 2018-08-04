@@ -197,6 +197,8 @@ class VeloxMapStorage{
                 code VARCHAR(128),
                 key VARCHAR(128),
                 value JSONB,
+                realm_code VARCHAR(40),
+                user_uid VARCHAR(40),
                 PRIMARY KEY(code, key)
             )
             ` ;
