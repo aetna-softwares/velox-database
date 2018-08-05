@@ -125,30 +125,59 @@ class VeloxMailManagment{
                 text: mail.text, // plain text body
                 html: mail.html // html body
             };
-        
-            // send mail with defined transport object
-            transporter.sendMail(mailOptions, (error, info) => {
-                if (error) {
-                    tx.update("velox_mail", {uid: mail.uid, 
-                        error: JSON.stringify(error),
-                        status: "error"
-                    }, function(err){
-                        if(err){
-                            return callback(err) ;
+            var jobAttachs = new AsyncJob(AsyncJob.PARALLEL) ;
+            if(mail.attachs.length>0){
+                mailOptions.attachments = [] ;
+                mail.attachs.forEach(function(attach){
+                    jobAttachs.push(function(cb){
+                        if(attach.binary_uid){
+                            tx.getBinaryStream(attach.binary_uid, (err, stream)=>{
+                                if(err){ return cb(err) ;}
+                                mailOptions.attachments.push({
+                                    filename : attach.name,
+                                    content: stream
+                                }) ;
+                                cb() ;
+                            });
+                        }else{
+                            mailOptions.attachments.push({
+                                filename : attach.name,
+                                content: attach.path
+                            }) ;
+                            cb() ;
                         }
-                        callback(error) ;
-                    }) ;
-                } else {
-                    tx.update("velox_mail", {uid: mail.uid, 
-                        message_id: info.messageId, 
-                        accepted: info.accepted?info.accepted.join(","):"",
-                        rejected: info.rejected?info.rejected.join(","):"",
-                        pending: info.pending?info.pending.join(","):"",
-                        smtp_response: info.response,
-                        status: "sent"
-                    }, callback) ;
-                }
-            });
+                    });
+                }) ;
+            }
+
+            jobAttachs.async((err)=>{
+                if(err){ return callback(err) ;}
+
+                // send mail with defined transport object
+                transporter.sendMail(mailOptions, (error, info) => {
+                    if (error) {
+                        tx.update("velox_mail", {uid: mail.uid, 
+                            error: JSON.stringify(error),
+                            status: "error"
+                        }, function(err){
+                            if(err){
+                                return callback(err) ;
+                            }
+                            callback(error) ;
+                        }) ;
+                    } else {
+                        tx.update("velox_mail", {uid: mail.uid, 
+                            message_id: info.messageId, 
+                            accepted: info.accepted?info.accepted.join(","):"",
+                            rejected: info.rejected?info.rejected.join(","):"",
+                            pending: info.pending?info.pending.join(","):"",
+                            smtp_response: info.response,
+                            status: "sent"
+                        }, callback) ;
+                    }
+                });
+            }) ;
+        
         }) ;
     }
 
@@ -165,7 +194,9 @@ class VeloxMailManagment{
         this.cronRunning = true ;
         try {
             db.transaction((client, done)=>{
-                client.search("velox_mail", {status: "tosend"}, (err, mails)=>{
+                client.search("velox_mail", {status: "tosend"}, [
+                    {otherTable: "velox_mail_attach", type: "2many", name: "attachs"}
+                ], (err, mails)=>{
                     if(err){ return done(err) ;}
                     let job = new AsyncJob(AsyncJob.SERIES) ;
                     for(let mail of mails){
@@ -216,6 +247,10 @@ class VeloxMailManagment{
         changes.push({
             sql: this.getCreateTableMail(backend)
         }) ;
+        changes.push({
+            sql: this.getCreateTableMailAttach(backend)
+        }) ;
+
         if(this.options.defaultMailServer){
             changes.push({
                 run: (tx, cb)=>{
@@ -256,11 +291,36 @@ class VeloxMailManagment{
             "accepted VARCHAR(128)",
             "rejected VARCHAR(128)",
             "pending VARCHAR(128)",
-            "smtp_response VARCHAR(128)"
+            "smtp_response VARCHAR(128)",
+            "realm_code VARCHAR(40)",
+            "user_uid VARCHAR(40)"
         ] ;
         if(backend === "pg"){
             return `
             CREATE TABLE IF NOT EXISTS velox_mail (
+                ${lines.join(",")}
+            )
+            ` ;
+        }
+        throw "not implemented for backend "+backend ;
+    }
+
+     /**
+     * Create the table velox_mail if not exists
+     * @param {string} backend 
+     */
+    getCreateTableMailAttach(backend){
+        let lines = [
+            "uid VARCHAR(40) PRIMARY KEY",
+            "mail_uid VARCHAR(40) REFERENCES velox_mail(uid)",
+            "name VARCHAR(128)",
+            "path VARCHAR(256)",
+            "binary_uid VARCHAR(40)",// REFERENCES velox_binary(uid)
+            "delete_after BOOLEAN"
+        ] ;
+        if(backend === "pg"){
+            return `
+            CREATE TABLE IF NOT EXISTS velox_mail_attach (
                 ${lines.join(",")}
             )
             ` ;
