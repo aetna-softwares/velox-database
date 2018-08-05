@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const AsyncJob = require("velox-commons/AsyncJob") ;
-var schedule = require('node-schedule');
+const schedule = require('node-schedule');
+const fs = require("fs") ;
 
 /**
  * This extension handle mail sending and archive
@@ -173,7 +174,27 @@ class VeloxMailManagment{
                             pending: info.pending?info.pending.join(","):"",
                             smtp_response: info.response,
                             status: "sent"
-                        }, callback) ;
+                        }, (err)=>{
+                            if(err){ return callback(err) ;}
+                            var jobAttachsDelete = new AsyncJob(AsyncJob.PARALLEL) ;
+                            if(mail.attachs.length>0){
+                                mailOptions.attachments = [] ;
+                                mail.attachs.forEach(function(attach){
+                                    if(attach.delete_after){
+                                        jobAttachsDelete.push(function(cb){
+                                            if(attach.binary_uid){
+                                                tx.remove("velox_binary", attach.binary_uid, cb) ;
+                                            }else{
+                                                fs.unlink(attach.path, cb) ;
+                                            }
+                                        });
+                                    }
+                                }) ;
+                                jobAttachsDelete.async(callback) ;
+                            } else {
+                                callback() ;
+                            }
+                        }) ;
                     }
                 });
             }) ;
