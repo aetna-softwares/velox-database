@@ -214,6 +214,7 @@ class VeloxBinaryStorage{
                     chunkSize: 2048     // in bytes.
                 }); 
                 readStream.put(pathOrStreamOrBuffer);
+                readStream.on = function(){} ;
             }else if(typeof(pathOrStream) === "string"){
                 //not a stream, create a stream
                 readStream = fs.createReadStream(pathOrStreamOrBuffer);
