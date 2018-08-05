@@ -292,7 +292,7 @@ class VeloxBinaryStorage{
             } ;
 
             if(Buffer.isBuffer(pathOrStreamOrBuffer)){
-                fs.writeFile(tempFile, (err)=>{
+                fs.writeFile(tempFile, pathOrStreamOrBuffer, (err)=>{
                     if(err){ return callback(err) ;}
                     writeDone() ;
                 });
