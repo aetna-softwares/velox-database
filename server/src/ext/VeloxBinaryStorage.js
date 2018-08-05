@@ -5,6 +5,7 @@ const path = require('path');
 const multiparty = require('multiparty');
 const crypto = require('crypto');
 const AsyncJob = require("velox-commons/AsyncJob") ;
+const streamBuffers = require('stream-buffers');
 
 /**
  * This extension handle binary storage in database
@@ -81,6 +82,21 @@ class VeloxBinaryStorage{
                 self.getBinaryStream(this, uid, callback) ;
             }
         } ;
+
+        this.extendsClient = {
+            saveBinary : function(record, pathOrStream, callback){
+                //this is the VeloxDatabase object
+                self.saveBinaryInTx(this, record, pathOrStream, callback) ;
+            },
+            getBinary : function(tableOruid, tableUid, callback){
+                //this is the VeloxDatabase object
+                self.getBinaryInTx(this, tableOruid, tableUid, callback) ;
+            },
+            getBinaryStream : function(uid, callback){
+                //this is the VeloxDatabase object
+                self.getBinaryStreamInTx(this, uid, callback) ;
+            }
+        };
 
         this.extendsExpressProto = {
             getSaveBinaryMiddleware: function(){
@@ -179,22 +195,28 @@ class VeloxBinaryStorage{
     /**
      * Save a binary file
      * 
-     * @param {VeloxDatabase} db the db access
+     * @param {VeloxDatabaseClient} client the db access
      * @param {VeloxBinaryStorageRecord} record the binary record
      * @param {string|ReadStream} pathOrStream the path to save or the stram to save
      * @param {function} callback called with saved record if succeed
      */
-    saveBinary(db, record, pathOrStream, callback) {
+    saveBinaryInTx(client, record, pathOrStreamOrBuffer, callback) {
         fs.mkdirs(this.pathStorageTemp, (err)=>{
             if(err){ return callback(err); }
 
             var tempUid = uuid.v4() ;
             var tempFile = path.join(this.pathStorage, tempUid) ;
 
-            var readStream = pathOrStream ;
-            if(typeof(pathOrStream) === "string"){
+            var readStream = pathOrStreamOrBuffer ;
+            if(Buffer.isBuffer(pathOrStreamOrBuffer)){
+                var readStream = new streamBuffers.ReadableStreamBuffer({
+                    frequency: 10,      // in milliseconds.
+                    chunkSize: 2048     // in bytes.
+                }); 
+                readStream.put(pathOrStreamOrBuffer);
+            }else if(typeof(pathOrStream) === "string"){
                 //not a stream, create a stream
-                readStream = fs.createReadStream(pathOrStream);
+                readStream = fs.createReadStream(pathOrStreamOrBuffer);
             }
 
             let writeStream = fs.createWriteStream(tempFile) ;
@@ -245,69 +267,80 @@ class VeloxBinaryStorage{
                         
                         
                         let moveFailed = false;
-                        db.transaction((client, done)=>{
-                            var afterSaveDone = (err, savedRecord)=>{ //when the db save is done, move the file
-                                if(err){ return done(err); } //save db failed, abort
-                                fs.move(tempFile, path.join(this.pathStorage, binaryRecord.path), {overwrite: true}, function(err){
-                                    if(err){ 
-                                        //move failed, rollback transaction
-                                        moveFailed = true ;
-                                        return done(err);
-                                    } 
-                                    
-                                    done(null, savedRecord) ;
-                                }) ;
-                            } ;
-
-                            if(mustCreate){
-                                binaryRecord.path = this.createTargetPath(binaryRecord) ;
-                                client.insert("velox_binary", binaryRecord, afterSaveDone) ;
+                        var onError = (err)=>{
+                            if(moveFailed){
+                                //an error happens when trying to move, don't delete the temp file that is OK and should be used to retrieve information 
+                                //and log the problem
+                                client.logger.error("Move from "+tempFile+" to "+binaryRecord.path+" failed. The temp file "+tempFile+" is kept for analyze", err) ;
+                                callback(err) ;
                             }else{
-                                client.getByPk("velox_binary", binaryRecord.uid, (err, existingRecord)=>{
-                                    if(err){ return done(err); }
-                                    if(!existingRecord){
-                                        binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
-                                        binaryRecord.path = this.createTargetPath(binaryRecord) ;
-                                        client.insert("velox_binary", binaryRecord, afterSaveDone) ;
-                                    }else{
-                                        if(!binaryRecord.creation_datetime){
-                                            binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
-                                        }
-                                        binaryRecord.path = this.createTargetPath(binaryRecord) ;
-                                        client.update("velox_binary", binaryRecord, afterSaveDone) ;
-                                    }
-                                }) ;
-                            }
-                        }, (err, savedRecord)=>{
-                            if(err){
-                                if(moveFailed){
-                                    //an error happens when trying to move, don't delete the temp file that is OK and should be used to retrieve information 
-                                    //and log the problem
-                                    db.logger.error("Move from "+tempFile+" to "+binaryRecord.path+" failed. The temp file "+tempFile+" is kept for analyze", err) ;
-                                    callback(err) ;
-                                }else{
-                                    //error before move, remove the temp file
-                                    fs.unlink(tempFile, (errDelete)=>{
-                                        if(errDelete){
-                                            db.logger.error("Can't remove "+tempFile, errDelete) ;
-                                        }
-                                        callback(err) ;
-                                    }) ;
-                                }
-                            }else{
+                                //error before move, remove the temp file
                                 fs.unlink(tempFile, (errDelete)=>{
                                     if(errDelete){
-                                        db.logger.error("Can't remove "+tempFile, errDelete) ;
+                                        client.logger.error("Can't remove "+tempFile, errDelete) ;
                                     }
-                                    callback(null, savedRecord) ;
+                                    callback(err) ;
                                 }) ;
                             }
-                        });
+                        } ;
+                        var finalize = (err, savedRecord)=>{
+                            fs.unlink(tempFile, (errDelete)=>{
+                                if(errDelete){
+                                    client.logger.error("Can't remove "+tempFile, errDelete) ;
+                                }
+                                callback(null, savedRecord) ;
+                            }) ;
+                        } ;
+                        var afterSaveDone = (err, savedRecord)=>{ //when the db save is done, move the file
+                            if(err){ return finalize(err); } //save db failed, abort
+                            fs.move(tempFile, path.join(this.pathStorage, binaryRecord.path), {overwrite: true}, function(err){
+                                if(err){ 
+                                    //move failed, rollback transaction
+                                    moveFailed = true ;
+                                    return finalize(err);
+                                } 
+                                finalize(null, savedRecord) ;
+                            }) ;
+                        } ;
+                        
+
+                        if(mustCreate){
+                            binaryRecord.path = this.createTargetPath(binaryRecord) ;
+                            client.insert("velox_binary", binaryRecord, afterSaveDone) ;
+                        }else{
+                            client.getByPk("velox_binary", binaryRecord.uid, (err, existingRecord)=>{
+                                if(err){ return onError(err); }
+                                if(!existingRecord){
+                                    binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
+                                    binaryRecord.path = this.createTargetPath(binaryRecord) ;
+                                    client.insert("velox_binary", binaryRecord, afterSaveDone) ;
+                                }else{
+                                    if(!binaryRecord.creation_datetime){
+                                        binaryRecord.creation_datetime = binaryRecord.modification_datetime ;
+                                    }
+                                    binaryRecord.path = this.createTargetPath(binaryRecord) ;
+                                    client.update("velox_binary", binaryRecord, afterSaveDone) ;
+                                }
+                            }) ;
+                        }
                     }) ;
                 }) ;
                 
             }) ;
         }) ;
+    }
+    /**
+     * Save a binary file
+     * 
+     * @param {VeloxDatabase} db the db access
+     * @param {VeloxBinaryStorageRecord} record the binary record
+     * @param {string|ReadStream} pathOrStream the path to save or the stram to save
+     * @param {function} callback called with saved record if succeed
+     */
+    saveBinary(db, record, pathOrStreamOrBuffer, callback) {
+        db.transaction((client, done)=>{
+            client.saveBinary(record, pathOrStreamOrBuffer, done) ;
+        });
     }
 
     /**
@@ -365,16 +398,38 @@ class VeloxBinaryStorage{
             } ;
         }
         db.inDatabase((client, done)=>{
-            client.searchFirst("velox_binary", search, (err, record)=>{
-                if(err){ return done(err); }
-                if(!record) { return done("No binary data with id "+tableOruid+" / "+tableUid+" found") ;}
-                let filePath = path.join(this.pathStorage, record.path) ;
-                fs.readFile(filePath, (err, contents)=>{
-                    if(err){ return done(err);}
-                    done(null, contents, record) ;
-                }) ;
-            }) ;
+            client.getBinary(tableOruid, tableUid, done) ;
         }, callback) ;
+    }
+    /**
+     * Get the file content (buffer) and the meta data 
+     * 
+     * @param {VeloxDatabaseClient} client the database access
+     * @param {string} tableOruid the table name or binary uid
+     * @param {string} [tableUid] if the table is given, the tableUid
+     * @param {function} callback callback, receive the file content and the record meta
+     */
+    getBinaryInTx(client, tableOruid, tableUid, callback){
+        var search = {
+            table_name : tableOruid,
+            table_uid : tableUid
+        } ;
+        if(typeof(tableUid) === "function"){
+            callback = tableUid;
+            tableUid = "" ;
+            var search = {
+                uid : tableOruid
+            } ;
+        }
+        client.searchFirst("velox_binary", search, (err, record)=>{
+            if(err){ return callback(err); }
+            if(!record) { return callback("No binary data with id "+tableOruid+" / "+tableUid+" found") ;}
+            let filePath = path.join(this.pathStorage, record.path) ;
+            fs.readFile(filePath, (err, contents)=>{
+                if(err){ return callback(err);}
+                callback(null, contents, record) ;
+            }) ;
+        }) ;
     }
 
     /**
@@ -413,14 +468,25 @@ class VeloxBinaryStorage{
      */
     getBinaryStream(db, uid, callback){
         db.inDatabase((client, done)=>{
-            client.getByPk("velox_binary", uid, (err, record)=>{
-                if(err){ return done(err); }
-                if(!record) { return done("No binary data with id "+uid+" found") ;}
-                let filePath = path.join(this.pathStorage, record.path) ;
-                let stream = fs.createReadStream(filePath) ;
-                done(null, stream, record) ;
-            }) ;
+            client.getBinaryStream(uid, done) ;
         }, callback) ;
+    }
+    
+    /**
+     * Get a file read stream and the meta data 
+     * 
+     * @param {VeloxDatabaseClient} client the database access
+     * @param {string} uid the binary record uid
+     * @param {function} callback callback, receive the file content and the record meta
+     */
+    getBinaryStreamInTx(client, uid, callback){
+        client.getByPk("velox_binary", uid, (err, record)=>{
+            if(err){ return callback(err); }
+            if(!record) { return callback("No binary data with id "+uid+" found") ;}
+            let filePath = path.join(this.pathStorage, record.path) ;
+            let stream = fs.createReadStream(filePath) ;
+            callback(null, stream, record) ;
+        }) ;
     }
 
     /**
