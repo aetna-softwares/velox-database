@@ -5,7 +5,6 @@ const path = require('path');
 const multiparty = require('multiparty');
 const crypto = require('crypto');
 const AsyncJob = require("velox-commons/AsyncJob") ;
-const streamBuffers = require('stream-buffers');
 
 /**
  * This extension handle binary storage in database
@@ -207,43 +206,7 @@ class VeloxBinaryStorage{
             var tempUid = uuid.v4() ;
             var tempFile = path.join(this.pathStorage, tempUid) ;
 
-            var readStream = pathOrStreamOrBuffer ;
-            if(Buffer.isBuffer(pathOrStreamOrBuffer)){
-                var readStream = new streamBuffers.ReadableStreamBuffer({
-                    frequency: 10,      // in milliseconds.
-                    chunkSize: 2048     // in bytes.
-                }); 
-                readStream.put(pathOrStreamOrBuffer);
-            }else if(typeof(pathOrStream) === "string"){
-                //not a stream, create a stream
-                readStream = fs.createReadStream(pathOrStreamOrBuffer);
-            }
-
-            let writeStream = fs.createWriteStream(tempFile) ;
-            
-            var errored = false ;
-            let onError = (err)=> {
-                // ensure callback is called only once:
-                if (!errored) {
-                    errored = true ;
-                    return callback(err) ;
-                }
-            } ;
-
-            readStream.on('error', onError);
-            writeStream.on('error', onError);
-        
-            
-            writeStream.on('open',  () => {
-                readStream.pipe(writeStream) ;
-            }) ;
-
-            
-            
-        
-            writeStream.once('close', ()=> {
-                //copy in temp file succeed
-
+            var writeDone = ()=>{
                 fs.stat(tempFile, (err, stats)=>{
                     if(err){ return callback(err) ;}
                     this.checksum(tempFile, (err, checksum)=>{
@@ -284,6 +247,7 @@ class VeloxBinaryStorage{
                             }
                         } ;
                         var finalize = (err, savedRecord)=>{
+                            if(err){ return callback(err) ;}
                             fs.unlink(tempFile, (errDelete)=>{
                                 if(errDelete){
                                     client.logger.error("Can't remove "+tempFile, errDelete) ;
@@ -325,8 +289,49 @@ class VeloxBinaryStorage{
                         }
                     }) ;
                 }) ;
+            } ;
+
+            if(Buffer.isBuffer(pathOrStreamOrBuffer)){
+                fs.writeFile(tempFile, (err)=>{
+                    if(err){ return callback(err) ;}
+                    writeDone() ;
+                });
+            }else{
+                var readStream = pathOrStreamOrBuffer ;
+                if(typeof(pathOrStream) === "string"){
+                    //not a stream, create a stream
+                    readStream = fs.createReadStream(pathOrStreamOrBuffer);
+                }
+    
+                let writeStream = fs.createWriteStream(tempFile) ;
                 
-            }) ;
+                var errored = false ;
+                let onError = (err)=> {
+                    // ensure callback is called only once:
+                    if (!errored) {
+                        errored = true ;
+                        return callback(err) ;
+                    }
+                } ;
+    
+                readStream.on('error', onError);
+                writeStream.on('error', onError);
+            
+                
+                writeStream.on('open',  () => {
+                    readStream.pipe(writeStream) ;
+                }) ;
+    
+                
+                
+            
+                writeStream.once('close', ()=> {
+                    //copy in temp file succeed
+                    writeDone() ;
+                }) ;
+            }
+
+
         }) ;
     }
     /**
@@ -340,7 +345,7 @@ class VeloxBinaryStorage{
     saveBinary(db, record, pathOrStreamOrBuffer, callback) {
         db.transaction((client, done)=>{
             client.saveBinary(record, pathOrStreamOrBuffer, done) ;
-        });
+        }, callback);
     }
 
     /**
@@ -386,17 +391,6 @@ class VeloxBinaryStorage{
      * @param {function} callback callback, receive the file content and the record meta
      */
     getBinary(db, tableOruid, tableUid, callback){
-        var search = {
-            table_name : tableOruid,
-            table_uid : tableUid
-        } ;
-        if(typeof(tableUid) === "function"){
-            callback = tableUid;
-            tableUid = "" ;
-            var search = {
-                uid : tableOruid
-            } ;
-        }
         db.inDatabase((client, done)=>{
             client.getBinary(tableOruid, tableUid, done) ;
         }, callback) ;
