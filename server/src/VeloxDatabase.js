@@ -2,6 +2,7 @@ const VeloxDbPgBackend = require("./backends/pg/VeloxDbPgBackend");
 const VeloxSqlUpdater = require("./VeloxSqlUpdater") ;
 const VeloxLogger = require("velox-commons/VeloxLogger") ;
 const AsyncJob = require("velox-commons/AsyncJob") ;
+const events = require("events") ;
 /**
  * VeloxDatabase helps you to manage your database
  */
@@ -604,12 +605,15 @@ class VeloxDatabase {
      */
     transaction(callbackDoTransaction, callbackDone, timeout){ 
         if(!callbackDone){ callbackDone = function(){} ;}
+        var eventTx = new events.EventEmitter();
+
         this.backend.open((err, client)=>{
             if(err){ return callbackDone(err) ;}
-            
+            client.on = eventTx.on.bind(eventTx) ;
             client.transaction((tx, done)=>{
                 callbackDoTransaction(client, done) ;
             }, function(err){ //explicit use of function instead of arrow to have argument variable
+                eventTx.emit("close", {db: this}) ;
                 client.close() ;
                 if(err){ 
                     return callbackDone(err) ;

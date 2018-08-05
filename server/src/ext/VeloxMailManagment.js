@@ -64,7 +64,9 @@ class VeloxMailManagment{
      */
     afterMailInsert(tx, mail, callback){
         if(mail.schedule_type === "now" && mail.status === "tosend"){
-            this.sendAMail(tx, mail, callback) ;
+            tx.on("close", (ctx)=>{
+                this.cronJob(ctx.db) ;
+            }) ;
         }else{
             callback() ;
         }
