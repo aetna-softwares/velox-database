@@ -67,9 +67,8 @@ class VeloxMailManagment{
             tx.on("close", (ctx)=>{
                 this.cronJob(ctx.db) ;
             }) ;
-        }else{
-            callback() ;
         }
+        callback() ;
     }
 
     /**
