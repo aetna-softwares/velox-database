@@ -298,7 +298,7 @@ class VeloxBinaryStorage{
                 });
             }else{
                 var readStream = pathOrStreamOrBuffer ;
-                if(typeof(pathOrStream) === "string"){
+                if(typeof(pathOrStreamOrBuffer) === "string"){
                     //not a stream, create a stream
                     readStream = fs.createReadStream(pathOrStreamOrBuffer);
                 }
