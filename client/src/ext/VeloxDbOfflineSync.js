@@ -353,15 +353,29 @@
     }
 
     extension.extendsObj.getSchema = function(callback){
-        var schema = localStorage.getItem(LOCAL_SCHEMA_KEY);
+        //try to get from session
+        var schema = sessionStorage.getItem(LOCAL_SCHEMA_KEY);
         if (schema) {
             schema = JSON.parse(schema);
             callback(null, schema);
         } else {
-            //no local schema, get from server
+            //no session schema, get from server
             this.constructor.prototype.getSchema.bind(this)(function (err, schema) {
-                if (err) { return callback(err); }
+                if (err) { 
+                    //error while getting from server, check in local (persistent storage)
+                    schema = localStorage.getItem(LOCAL_SCHEMA_KEY);
+                    if(schema){
+                        //put in session
+                        sessionStorage.setItem(LOCAL_SCHEMA_KEY, schema);
+                        schema = JSON.parse(schema);
+                        return callback(null, schema);
+                    }
+                    //can't get server and no local
+                    return callback(err); 
+                }
+                //save in session and local
                 localStorage.setItem(LOCAL_SCHEMA_KEY, JSON.stringify(schema));
+                sessionStorage.setItem(LOCAL_SCHEMA_KEY, JSON.stringify(schema));
                 callback(null, schema) ;
             }.bind(this));
         }
