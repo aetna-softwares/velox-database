@@ -788,6 +788,12 @@
                                 }
                             }
 
+                            if(Object.keys(multiread).length === 0){
+                                syncing = false;
+                                this.lastSyncDate = new Date() ;
+                                return callback();
+                            }
+
                             this.constructor.prototype.multiread.bind(this)(multiread, function(err,reads){
                                 if (err) { return callback(err); }
                                 var changeSet = [] ;
