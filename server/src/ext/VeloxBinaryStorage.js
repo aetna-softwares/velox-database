@@ -248,12 +248,7 @@ class VeloxBinaryStorage{
                         } ;
                         var finalize = (err, savedRecord)=>{
                             if(err){ return callback(err) ;}
-                            fs.unlink(tempFile, (errDelete)=>{
-                                if(errDelete){
-                                    client.logger.error("Can't remove "+tempFile, errDelete) ;
-                                }
-                                callback(null, savedRecord) ;
-                            }) ;
+                            callback(null, savedRecord) ;
                         } ;
                         var afterSaveDone = (err, savedRecord)=>{ //when the db save is done, move the file
                             if(err){ return finalize(err); } //save db failed, abort
