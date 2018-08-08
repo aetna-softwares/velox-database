@@ -1218,7 +1218,7 @@ class VeloxDbPgClient {
 
                             Object.keys(schema).forEach(function(table){
                                 var tableDef = schema[table] ;
-                                table.columns.forEach(function(colDef){
+                                tableDef.columns.forEach(function(colDef){
                                     if(!colDef.values && tableDef.fk){
                                         tableDef.fk.some(function(fk){
                                             if(fk.thisColumn === colDef.name){
