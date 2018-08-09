@@ -32,6 +32,7 @@ function extendsSchema(schemaBase, schemaExtends){
     }) ;
 }
 
+var clientIdInc = 0;
 class VeloxDbPgClient {
 
     /**
@@ -45,6 +46,8 @@ class VeloxDbPgClient {
         this.connection = connection;
         this.closeCb = closeCb ;
         this.logger = logger ;
+        this.id = clientIdInc++ ;
+        console.log("CLIENT "+this.id+" OPENNED") ;
 
         if(!cache._cachePk){
             cache._cachePk = {} ;
@@ -1498,6 +1501,7 @@ class VeloxDbPgClient {
      * Close the database connection
      */
     close() {
+        console.log("CLIENT "+this.id+" CLOSED") ;
         this.closeCb() ;
     }
 }
