@@ -1499,7 +1499,6 @@ class VeloxDbPgClient {
      * Close the database connection
      */
     close() {
-        console.log("CLIENT "+this.id+" CLOSED") ;
         this.closeCb() ;
     }
 }
@@ -1552,11 +1551,7 @@ class VeloxDbPgBackend {
      */
     open(callback){
         var idConnect = clientIdInc++ ;
-        console.log("WAIT TO OPEN... "+idConnect);
-        console.trace() ;
-        console.log("AFTER TRACE "+idConnect);
         this.pool.connect((err, client, done) => {
-            console.log("OPENNED ?"+idConnect, err);
             if(err){ return callback(err); }
 
             let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache, this.schema, this.customClientInit) ;

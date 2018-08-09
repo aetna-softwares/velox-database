@@ -145,9 +145,7 @@ class VeloxBinaryStorage{
                 return (req, res)=>{
                     let uid = req.params.uid;
                     let disposition = req.params.action==="download"?"attachment":"inline";  
-                    console.log("READ BEFORE");                  
                     this.db.getBinary(uid, (err, buffer, record)=>{
-                        console.log("READ AFTER", err);                  
                         if (err) {
                             this.db.logger.error("get binary failed : ", err, uid);
                             return res.status(500).json(err);
@@ -162,9 +160,7 @@ class VeloxBinaryStorage{
                         res.setHeader('Content-disposition', disposition+'; filename=' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
                         res.setHeader('Content-type', record.mime_type);
             
-                        console.log("BEFORE END"); 
                         res.end(buffer);
-                        console.log("AFTER END"); 
                     }) ;
                 } ;
             }
@@ -238,17 +234,13 @@ class VeloxBinaryStorage{
                             if(moveFailed){
                                 //an error happens when trying to move, don't delete the temp file that is OK and should be used to retrieve information 
                                 //and log the problem
-                                console.log("ERROR BEFORE");
                                 client.logger.error("Move from "+tempFile+" to "+binaryRecord.path+" failed. The temp file "+tempFile+" is kept for analyze", err) ;
-                                console.log("ERROR AFTER");
                                 callback(err) ;
                             }else{
                                 //error before move, remove the temp file
                                 fs.unlink(tempFile, (errDelete)=>{
                                     if(errDelete){
-                                        console.log("ERROR BEFORE");
                                         client.logger.error("Can't remove "+tempFile, errDelete) ;
-                                        console.log("ERROR AFTER");
                                     }
                                     callback(err) ;
                                 }) ;
@@ -394,13 +386,11 @@ class VeloxBinaryStorage{
      * @param {function} callback callback, receive the file content and the record meta
      */
     getBinary(db, tableOruid, tableUid, callback){
-        console.log("getBinary BEFORE");
         if(typeof(tableUid) === "function"){
             callback = tableUid;
             tableUid = "";
         }
         db.inDatabase((client, done)=>{
-            console.log("getBinary IN BEFORE");
             client.getBinary(tableOruid, tableUid, done) ;
         }, callback) ;
     }
