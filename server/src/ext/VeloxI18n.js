@@ -217,7 +217,7 @@ class VeloxI18n{
      */
     translateSaveHook(table, record, callback){
         var lang = "base" ;
-
+        console.log("TRANSLATE HOOK ", table, record);
         if(this.context && this.context.req){
             if(this.context.req.lang){
                 lang = this.context.req.lang ;
@@ -230,10 +230,12 @@ class VeloxI18n{
                 }
             }
             
+            console.log("GO TO SAVE ", lang, table, record);
             this.translateSave(lang, table, record, callback);
 
 
         }else{
+            console.log("NO CONTEXT ", table, record);
             callback() ;
         }
     }
