@@ -421,6 +421,7 @@ class VeloxBinaryStorage{
                 uid : tableOruid
             } ;
         }
+        console.log("getBinaryInTx 2 ??? ", tableOruid, tableUid, callback) ;
         client.searchFirst("velox_binary", search, (err, record)=>{
             if(err){ return callback(err); }
             if(!record) { return callback("No binary data with id "+tableOruid+" / "+tableUid+" found") ;}
