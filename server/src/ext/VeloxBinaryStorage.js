@@ -516,7 +516,7 @@ class VeloxBinaryStorage{
                 mime_type VARCHAR(75),
                 description  VARCHAR(128),
                 filename VARCHAR(128),
-                path VARCHAR(256)
+                path VARCHAR(512)
             )
             ` ;
         }
