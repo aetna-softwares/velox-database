@@ -162,7 +162,9 @@ class VeloxBinaryStorage{
                         res.setHeader('Content-disposition', disposition+'; filename=' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
                         res.setHeader('Content-type', record.mime_type);
             
+                        console.log("BEFORE END"); 
                         res.end(buffer);
+                        console.log("AFTER END"); 
                     }) ;
                 } ;
             }
