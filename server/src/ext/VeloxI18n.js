@@ -123,7 +123,7 @@ class VeloxI18n{
                 from += ` LEFT JOIN (
                         SELECT uid, value FROM velox_translation WHERE lang='${lang}' AND table_name='${table}' and col='${col}'
                         ) ${alias} ON ${alias}.uid = m.${pk} ` ;
-                columns.push(alias+'.value AS "'+col+'"') ;
+                columns.push('COALESCE('+alias+'.value, m.'+col+') AS "'+col+'"') ;
             }
             let cols = columns.join(",") ;
 
