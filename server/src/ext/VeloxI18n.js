@@ -68,6 +68,9 @@ class VeloxI18n{
             },
             translateSave : function(lang, table, record, callback){
                 self.translateSave(this, lang, table, record, callback);
+            },
+            getLang: function(){
+                return self.getLang(this) ;
             }
         };
         
@@ -77,15 +80,61 @@ class VeloxI18n{
         this.interceptClientQueries.push({name : "insert", table: "velox_translation", before : this.beforeSaveTranslation });
         this.interceptClientQueries.push({name : "update", table: "velox_translation", before : this.beforeSaveTranslation });
 
+        let beforeSearchHook = function(table){
+            let client = this;
+            let callback = arguments[arguments.length-1] ;
+            self.beforeSearchHook(client, table, callback) ;
+        } ;
+
         for(let table of options.tables){
             this.interceptClientQueries.push({name : "getByPk", table: table.name, after : this.translateOne });
             this.interceptClientQueries.push({name : "searchFirst", table: table.name, after : this.translateOne });
-            this.interceptClientQueries.push({name : "search", table: table.name, after : this.translateMany });
+            this.interceptClientQueries.push({name : "search", table: table.name, before : beforeSearchHook, after : this.translateMany });
             this.interceptClientQueries.push({name : "insert", table: table.name, after : this.translateSaveHook });
             this.interceptClientQueries.push({name : "update", table: table.name, after : this.translateSaveHook });
         }
         
     }
+
+    beforeSearchHook(client, table, callback){
+        if(client["initI18n"+table]){ return callback() ;}
+        let lang = client.getLang() ;
+        if(lang === "base"){ return callback() ;}
+        client.getSchema((err, schema)=>{
+            if(err){ return callback(err) ;}
+            client["initI18n"+table] = true ;
+            let tableSql = client.getTable(table) ;
+            let translatedColumns = [] ;
+            this.options.tables.some(function(t){
+                if(t.name === table){
+                    translatedColumns = t.columns.map(function(c){ return c.name ;});
+                    return true;
+                }
+            }) ;
+            let notTranslatedColumns = schema[table].columns.filter(function(c){
+                return translatedColumns.indexOf(c.name) === -1;
+            }).map(function(c){ return c.name ;}) ;
+
+            let from = tableSql+" m " ;
+            let columns = notTranslatedColumns ;
+            let pk = schema[table].pk[0] ;
+            for(let col of translatedColumns){
+                let alias = "t_"+col ;
+                from += ` LEFT JOIN (
+                        SELECT uid, value FROM velox_translation WHERE lang='${lang}' AND table_name='${table}' and col='${col}'
+                        ) ${alias} ON ${alias}.uid = m.${pk} ` ;
+                columns.push(alias+'.value AS "'+col+'"') ;
+            }
+            let cols = columns.join(",") ;
+
+            var sql = `(SELECT ${cols} FROM ${from})` ;
+            this["getTable_"+table] = function(){
+                return sql ;
+            } ;
+            callback() ;
+        }) ;
+    }
+
 
     /**
      * Clear cache
@@ -208,6 +257,23 @@ class VeloxI18n{
         });
     }
 
+    getLang(client){
+        var lang = "base" ;
+        if(client.context.req.lang){
+            lang = client.context.req.lang ;
+        } else if(client.context.req.headers["x-velox-lang"]){
+            lang = client.context.req.headers["x-velox-lang"].trim() ;
+        } else if(client.context.req.user && client.context.req.user.lang){
+            lang = client.context.req.user.lang ;
+        } else if (client.context.req.headers["accept-language"]){
+            let [acceptedLang] = client.context.req.headers["accept-language"].split(",") ;
+            if(acceptedLang){
+                lang = acceptedLang.trim() ;
+            }
+        }
+        return lang;
+    }
+
     /**
      * Update records with translations
      * 
@@ -216,28 +282,10 @@ class VeloxI18n{
      * @param {function} callback 
      */
     translateSaveHook(table, record, callback){
-        var lang = "base" ;
-        console.log("TRANSLATE HOOK ", table, record);
-        if(this.context && this.context.req){
-            if(this.context.req.lang){
-                lang = this.context.req.lang ;
-            } else if(this.context.req.headers["x-velox-lang"]){
-                lang = this.context.req.headers["x-velox-lang"].trim() ;
-            } else if(this.context.req.user && this.context.req.user.lang){
-                lang = this.context.req.user.lang ;
-            } else if (this.context.req.headers["accept-language"]){
-                let [acceptedLang] = this.context.req.headers["accept-language"].split(",") ;
-                if(acceptedLang){
-                    lang = acceptedLang.trim() ;
-                }
-            }
-            
-            console.log("GO TO SAVE ", lang, table, record);
+        var lang = this.getLang() ;
+        if(lang !== "base"){
             this.translateSave(lang, table, record, callback);
-
-
         }else{
-            console.log("NO CONTEXT ", table, record);
             callback() ;
         }
     }
@@ -250,30 +298,14 @@ class VeloxI18n{
      * @param {function} callback 
      */
     translateMany(table, records, callback){
-        var lang = "base" ;
-
-        if(this.context && this.context.req){
-            if(this.context.req.lang){
-                lang = this.context.req.lang ;
-            } else if(this.context.req.headers["x-velox-lang"]){
-                lang = this.context.req.headers["x-velox-lang"].trim() ;
-            } else if(this.context.req.user && this.context.req.user.lang){
-                lang = this.context.req.user.lang ;
-            } else if (this.context.req.headers["accept-language"]){
-                let [acceptedLang] = this.context.req.headers["accept-language"].split(",") ;
-                if(acceptedLang){
-                    lang = acceptedLang.trim() ;
-                }
-            }
-
+        var lang = this.getLang() ;
+        if(lang !== "base"){
             this.translateRecords(lang, table, records, (err)=>{
                 if(err){
                     return callback(err) ;
                 }
                 callback(null, records) ;
             });
-            
-            
         }else{
             callback(null, records) ;
         }
@@ -287,22 +319,8 @@ class VeloxI18n{
      * @param {function} callback 
      */
     translateOne(table, record, callback){
-        var lang = "base" ;
-
-        if(record && this.context && this.context.req){
-            if(this.context.req.lang){
-                lang = this.context.req.lang ;
-            } else if(this.context.req.headers["x-velox-lang"]){
-                lang = this.context.req.headers["x-velox-lang"].trim() ;
-            } else if(this.context.req.user && this.context.req.user.lang){
-                lang = this.context.req.user.lang ;
-            } else if (this.context.req.headers["accept-language"]){
-                let [acceptedLang] = this.context.req.headers["accept-language"].split(",") ;
-                if(acceptedLang){
-                    lang = acceptedLang.trim() ;
-                }
-            }
-
+        var lang = this.getLang() ;
+        if(record && lang !== "base"){
             this.translateRecords(lang, table, [record], (err)=>{
                 if(err){
                     return callback(err) ;
