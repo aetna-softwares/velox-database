@@ -259,16 +259,18 @@ class VeloxI18n{
 
     getLang(client){
         var lang = "base" ;
-        if(client.context.req.lang){
-            lang = client.context.req.lang ;
-        } else if(client.context.req.headers["x-velox-lang"]){
-            lang = client.context.req.headers["x-velox-lang"].trim() ;
-        } else if(client.context.req.user && client.context.req.user.lang){
-            lang = client.context.req.user.lang ;
-        } else if (client.context.req.headers["accept-language"]){
-            let [acceptedLang] = client.context.req.headers["accept-language"].split(",") ;
-            if(acceptedLang){
-                lang = acceptedLang.trim() ;
+        if(client.context && client.context && client.context.req){
+            if(client.context.req.lang){
+                lang = client.context.req.lang ;
+            } else if(client.context.req.headers["x-velox-lang"]){
+                lang = client.context.req.headers["x-velox-lang"].trim() ;
+            } else if(client.context.req.user && client.context.req.user.lang){
+                lang = client.context.req.user.lang ;
+            } else if (client.context.req.headers["accept-language"]){
+                let [acceptedLang] = client.context.req.headers["accept-language"].split(",") ;
+                if(acceptedLang){
+                    lang = acceptedLang.trim() ;
+                }
             }
         }
         return lang;
