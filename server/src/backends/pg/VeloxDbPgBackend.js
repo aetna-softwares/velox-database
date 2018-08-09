@@ -46,9 +46,6 @@ class VeloxDbPgClient {
         this.connection = connection;
         this.closeCb = closeCb ;
         this.logger = logger ;
-        this.id = clientIdInc++ ;
-        console.log("CLIENT "+this.id+" OPENNED") ;
-        console.trace() ;
 
         if(!cache._cachePk){
             cache._cachePk = {} ;
@@ -1554,12 +1551,16 @@ class VeloxDbPgBackend {
      * @param {function(Error, VeloxDbPgClient)} callback - Callback with VeloxDbPgClient instance
      */
     open(callback){
-        console.log("WAIT TO OPEN...");
+        var idConnect = clientIdInc++ ;
+        console.log("WAIT TO OPEN... "+idConnect);
+        console.trace() ;
+        console.log("AFTER TRACE "+idConnect);
         this.pool.connect((err, client, done) => {
-            console.log("OPENNED ?", err);
+            console.log("OPENNED ?"+idConnect, err);
             if(err){ return callback(err); }
 
             let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache, this.schema, this.customClientInit) ;
+            dbClient.id = idConnect ;
             callback(null, dbClient) ;
         });
     }
