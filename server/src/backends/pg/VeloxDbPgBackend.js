@@ -48,6 +48,7 @@ class VeloxDbPgClient {
         this.logger = logger ;
         this.id = clientIdInc++ ;
         console.log("CLIENT "+this.id+" OPENNED") ;
+        console.trace() ;
 
         if(!cache._cachePk){
             cache._cachePk = {} ;
