@@ -221,6 +221,8 @@ class VeloxI18n{
         if(this.context && this.context.req){
             if(this.context.req.lang){
                 lang = this.context.req.lang ;
+            } else if(this.context.req.headers["x-velox-lang"]){
+                lang = this.context.req.headers["x-velox-lang"].trim() ;
             } else if(this.context.req.user && this.context.req.user.lang){
                 lang = this.context.req.user.lang ;
             } else if (this.context.req.headers["accept-language"]){
@@ -253,6 +255,8 @@ class VeloxI18n{
         if(this.context && this.context.req){
             if(this.context.req.lang){
                 lang = this.context.req.lang ;
+            } else if(this.context.req.headers["x-velox-lang"]){
+                lang = this.context.req.headers["x-velox-lang"].trim() ;
             } else if(this.context.req.user && this.context.req.user.lang){
                 lang = this.context.req.user.lang ;
             } else if (this.context.req.headers["accept-language"]){
@@ -288,6 +292,8 @@ class VeloxI18n{
         if(record && this.context && this.context.req){
             if(this.context.req.lang){
                 lang = this.context.req.lang ;
+            } else if(this.context.req.headers["x-velox-lang"]){
+                lang = this.context.req.headers["x-velox-lang"].trim() ;
             } else if(this.context.req.user && this.context.req.user.lang){
                 lang = this.context.req.user.lang ;
             } else if (this.context.req.headers["accept-language"]){
