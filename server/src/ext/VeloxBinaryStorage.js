@@ -409,6 +409,7 @@ class VeloxBinaryStorage{
      * @param {function} callback callback, receive the file content and the record meta
      */
     getBinaryInTx(client, tableOruid, tableUid, callback){
+        console.log("getBinaryInTx ??? ", tableOruid, tableUid, callback) ;
         var search = {
             table_name : tableOruid,
             table_uid : tableUid
