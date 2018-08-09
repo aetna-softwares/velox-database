@@ -395,6 +395,10 @@ class VeloxBinaryStorage{
      */
     getBinary(db, tableOruid, tableUid, callback){
         console.log("getBinary BEFORE");
+        if(typeof(tableUid) === "function"){
+            callback = tableUid;
+            tableUid = "";
+        }
         db.inDatabase((client, done)=>{
             console.log("getBinary IN BEFORE");
             client.getBinary(tableOruid, tableUid, done) ;
@@ -409,7 +413,6 @@ class VeloxBinaryStorage{
      * @param {function} callback callback, receive the file content and the record meta
      */
     getBinaryInTx(client, tableOruid, tableUid, callback){
-        console.log("getBinaryInTx ??? ", tableOruid, tableUid, callback) ;
         var search = {
             table_name : tableOruid,
             table_uid : tableUid
@@ -417,11 +420,12 @@ class VeloxBinaryStorage{
         if(typeof(tableUid) === "function"){
             callback = tableUid;
             tableUid = "" ;
+        }
+        if(!tableUid){
             var search = {
                 uid : tableOruid
             } ;
         }
-        console.log("getBinaryInTx 2 ??? ", tableOruid, tableUid, callback) ;
         client.searchFirst("velox_binary", search, (err, record)=>{
             if(err){ return callback(err); }
             if(!record) { return callback("No binary data with id "+tableOruid+" / "+tableUid+" found") ;}
