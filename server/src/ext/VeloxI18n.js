@@ -128,7 +128,7 @@ class VeloxI18n{
             let cols = columns.join(",") ;
 
             var sql = `(SELECT ${cols} FROM ${from})` ;
-            this["getTable_"+table] = function(){
+            client["getTable_"+table] = function(){
                 return sql ;
             } ;
             callback() ;
