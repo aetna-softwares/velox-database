@@ -1549,7 +1549,9 @@ class VeloxDbPgBackend {
      * @param {function(Error, VeloxDbPgClient)} callback - Callback with VeloxDbPgClient instance
      */
     open(callback){
+        console.log("WAIT TO OPEN...");
         this.pool.connect((err, client, done) => {
+            console.log("OPENNED ?", err);
             if(err){ return callback(err); }
 
             let dbClient = new VeloxDbPgClient(client, done, this.logger, this.cache, this.schema, this.customClientInit) ;
