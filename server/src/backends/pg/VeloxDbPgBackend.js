@@ -1003,8 +1003,8 @@ class VeloxDbPgClient {
         let colNames = columns.map((c)=>{ return c.name ;}) ;
         var orderByIsRealColumn = orderBy.split(",").every((ob)=>{
             //check we only receive a valid column name and asc/desc
-            let col = ob.replace("DESC", "").replace("desc", "")
-            .replace("ASC", "").replace("asc", "").trim() ;
+            let col = ob.replace(" DESC", "").replace(" desc", "")
+            .replace(" ASC", "").replace(" asc", "").trim() ;
             return colNames.indexOf(col) !== -1 ;
         })  ;
         return orderByIsRealColumn ;
