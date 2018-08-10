@@ -561,8 +561,8 @@ class VeloxDbPgClient {
         if(join.flattenJoin && join.orderBy){
             var indexSep = join.orderBy.indexOf(">") ;
             if(indexSep !== -1){
-                join.orderBy = join.orderBy.substring(0, indexSep) ;
                 join.flattenJoin.orderBy = join.orderBy.substring(indexSep+1) ;
+                join.orderBy = join.orderBy.substring(0, indexSep) ;
             }
         }
 

@@ -237,6 +237,22 @@
                     }
                 }
 
+                var indexSep = join.otherTable.indexOf(">");
+                if(indexSep !== -1){
+                    if(join.joins){
+                        throw "You can't use both flatten and sub joins" ;
+                    }
+                    var flattenJoin = {otherTable : join.otherTable.substring(indexSep+1), flatten: true} ;
+                    var indexSepOrderBy = join.orderBy.indexOf(">") ;
+                    if(indexSepOrderBy !== -1){
+                        flattenJoin.orderBy = join.orderBy.substring(indexSepOrderBy+1) ;
+                        join.orderBy = join.orderBy.substring(0, indexSepOrderBy) ;
+                    }
+                    join.joins = [flattenJoin] ;
+                    join.otherTable = join.otherTable.substring(0, indexSep) ;
+                }
+
+
                 if(otherField && !thisField || !otherField && thisField){ throw ("You must set both otherField and thisField") ; }
 
                 var pairs = {} ;
@@ -301,7 +317,15 @@
                         throw result.err ;
                     }
                     //console.log(">>END join "+table+" > "+join.otherTable+" (name : "+join.name+") RESULTS ", otherRecords);
-                    r[join.name||join.otherTable] = limit===1?result.records[0]:result.records ;
+                    if(join.flatten){
+                        if(result.records[0]){
+                            Object.keys(result.records[0]).forEach((k)=>{
+                                r[k] = result.records[0][k] ;
+                            }) ;
+                        }
+                    }else{
+                        r[join.name||join.otherTable] = limit===1?result.records[0]:result.records ;
+                    }
                 }
             }
         }
