@@ -399,9 +399,13 @@ class VeloxDbPgClient {
                 let otherTable = join.otherTable;
                 let joinType = join.type || "2one" ;
                 var joinAliasId = (aliasId||"main")+"_"+(join.name||join.otherTable) ;
+                var subJoins = join.joins ;
+                if(join.flattenJoin){
+                    subJoins = [join.flattenJoin] ;
+                }
                 if(thisTable === table){
                     for(let rec of recordsByPk){
-                        let otherRecords = this.constructResults(schema, otherTable, aliases, rec.rows, join.joins, joinAliasId) ;
+                        let otherRecords = this.constructResults(schema, otherTable, aliases, rec.rows, subJoins, joinAliasId) ;
                         if(join.flatten){
                             if(otherRecords[0]){
                                 Object.keys(otherRecords[0]).forEach((k)=>{
