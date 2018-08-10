@@ -11,6 +11,7 @@ class VeloxDatabase {
     /**
      * @typedef InterfaceLogger
      * @type {object}
+     * @property {function(string)} silly log silly
      * @property {function(string)} debug log debug
      * @property {function(string)} info log info
      * @property {function(string)} warn log warn
