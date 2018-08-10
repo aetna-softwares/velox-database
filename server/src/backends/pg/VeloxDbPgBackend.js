@@ -1565,10 +1565,19 @@ class VeloxDbPgBackend {
      * 
      * @param {function(err)} callback 
      */
-    createIfNotExist(callback){
+    createIfNotExist(callback, tryNumber){
         const client = new Client(this.options) ;
         client.connect((err) => {
             if(err){ 
+                if(err.message && err.message.indexOf("ECONNREFUSED") !== -1){
+                    if(tryNumber && tryNumber > 3){
+                        this.logger.error("Can't connect to database after "+tryNumber+" retry");
+                        return callback(err) ;
+                    }
+                    tryNumber = (tryNumber||0)+1;
+                    setTimeout(()=>{ this.createIfNotExist(callback, tryNumber) ; }, 200) ;
+                    return;
+                }
                 //likely db does not exists
                 this.logger.info("Database does not exists, try to create");
                 let optionsTemplate1 = JSON.parse(JSON.stringify(this.options)) ;
