@@ -139,7 +139,7 @@ class VeloxDbPgClient {
             callback = params;
             params = [];
         }
-        this.logger.silly("Run SQL "+sql+", params "+JSON.stringify(params)) ;
+        this.logger.debug("Run SQL "+sql+", params "+JSON.stringify(params)) ;
         let lowerSql = sql.toLowerCase() ;
         if(lowerSql.indexOf("create ") != -1 || lowerSql.indexOf("alter ") != -1 ){
             delete this.cache.schema ;
