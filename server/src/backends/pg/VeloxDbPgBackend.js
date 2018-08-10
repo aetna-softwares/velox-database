@@ -234,6 +234,12 @@ class VeloxDbPgClient {
         if(!parentAliasId){ parentAliasId = "main" ;}
         let j = "";
         j += " LEFT JOIN" ;
+
+        var indexSep = join.otherTable.indexOf(">");
+        if(indexSep !== -1){
+            join.flattenJoin = {otherTable : join.otherTable.substring(indexSep+1), flatten: true} ;
+            join.otherTable = join.otherTable.substring(0, indexSep) ;
+        }
         
         if(!schema[join.otherTable]){ throw ("Unknown table "+join.otherTable) ;}
 
@@ -307,10 +313,16 @@ class VeloxDbPgClient {
 
         from.push(j) ;
 
+        if(join.joins && join.flattenJoin){
+            throw "You can't both have joins and flatten with another table" ;
+        }
         if(join.joins){
             for(let subJoin of join.joins){
                 this._addFromJoin(subJoin, schema, select, from, aliases, params, join.otherTable, aliasId) ;
             }
+        }
+        if(join.flattenJoin){
+            this._addFromJoin(join.flattenJoin, schema, select, from, aliases, params, join.otherTable, aliasId) ;
         }
     }
 
@@ -390,7 +402,13 @@ class VeloxDbPgClient {
                 if(thisTable === table){
                     for(let rec of recordsByPk){
                         let otherRecords = this.constructResults(schema, otherTable, aliases, rec.rows, join.joins, joinAliasId) ;
-                        if(joinType === "2many"){
+                        if(join.flatten){
+                            if(otherRecords[0]){
+                                Object.keys(otherRecords[0]).forEach((k)=>{
+                                    rec.record[k] = otherRecords[0][k] ;
+                                }) ;
+                            }
+                        } else if(joinType === "2many"){
                             rec.record[join.name||join.otherTable] = otherRecords ;
                         }else{
                             rec.record[join.name||join.otherTable] = otherRecords[0]||null ;
@@ -536,6 +554,14 @@ class VeloxDbPgClient {
         
         var aliasId = parentAliasId+"_"+(join.name||join.otherTable) ;
 
+        if(join.flattenJoin && join.orderBy){
+            var indexSep = join.orderBy.indexOf(">") ;
+            if(indexSep !== -1){
+                join.orderBy = join.orderBy.substring(0, indexSep) ;
+                join.flattenJoin.orderBy = join.orderBy.substring(indexSep+1) ;
+            }
+        }
+
         if(join.orderBy){
             if(!this._checkOrderByClause(join.orderBy, schema[join.otherTable].columns)){
                 throw "Invalid order by clause "+join.orderBy ;
@@ -549,6 +575,9 @@ class VeloxDbPgClient {
             for(let subJoin of join.joins){
                 this._addOrderByJoin(subJoin, schema, orderByItems, aliases, aliasId) ;
             }
+        }
+        if(join.flattenJoin){
+            this._addOrderByJoin(join.flattenJoin, schema, orderByItems, aliases, aliasId) ;
         }
     }
 
