@@ -165,7 +165,7 @@ class VeloxMailManagment{
                             if(err){
                                 return callback(err) ;
                             }
-                            callback(error) ;
+                            callback() ;
                         }) ;
                     } else {
                         tx.update("velox_mail", {uid: mail.uid, 
