@@ -39,7 +39,7 @@
             }catch(err){
                 return callback(err);
             }
-            callback() ;
+            initExtension.bind(this)(extensionsToInit, callback) ;
         }else{
             extension.init(this, function(err){
                 if(err){ return callback(err); }
@@ -58,11 +58,21 @@
         }
 
         //add extension features
+        var extendObject = function(obj, extend){
+            Object.keys(extend).forEach(function (key) {
+                if(typeof(extend[key]) === "function"){
+                    obj[key] = extend[key].bind(obj);
+                }else{
+                    if(!obj[key]){
+                        obj[key] = {} ;
+                    }
+                    extendObject(obj[key], extend[key]) ;
+                }
+            }.bind(this));
+        } ;
         VeloxDatabaseClient.extensions.forEach(function(extension){
             if(extension.extendsObj){
-                Object.keys(extension.extendsObj).forEach(function (key) {
-                        this[key] = extension.extendsObj[key].bind(this);
-                }.bind(this));
+                extendObject(this, extension.extendsObj) ;
             }
         }.bind(this));
 

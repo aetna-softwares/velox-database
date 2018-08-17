@@ -38,7 +38,19 @@
         } ;
         client._registerEndPointFunction(saveEndPoint, saveFun) ;
         
-         //add read api entry
+
+        var downloadEndPoint = client.options.downloadEndPoint || "downloadBinary" ;
+        var ajaxDownload = client._createEndPointFunction(saveEndPoint , "GET", null, "arraybuffer",  [ "uid", "action" ]) ;
+        var downloadFun = function(uid, action, callback, callbackProgress){
+            var xhrUpload = ajaxDownload.bind(client)(uid, action, callback) ;
+            if(callbackProgress){
+                xhrUpload.addEventListener(callbackProgress) ;
+            }
+        } ;
+        client._registerEndPointFunction(downloadEndPoint, downloadFun) ;
+        
+        
+        //add read api entry
         var readEndPoint = client.options.readEndPoint || "readBinary" ;
         client._registerEndPointFunction(readEndPoint+"/download", function(recordOrUid, filename, callback, timeout){
             if(typeof(filename) === "function"){
@@ -78,7 +90,7 @@
             document.location.href = url ;
         }) ;
 
-        client._registerEndPointFunction(readEndPoint+"/url", function(recordOrUid, filename){
+        client._registerEndPointFunction(readEndPoint+"/url", function(recordOrUid, filename, callback){
             var uid = recordOrUid;
             if(typeof(recordOrUid) === "object"){
                 uid = recordOrUid.uid ;
@@ -86,9 +98,9 @@
                     filename = recordOrUid.filename ;
                 }
             }
-            return client.options.serverUrl+readEndPoint+"/inline/"+uid+(filename?"/"+filename:"") ;
+            callback(null, client.options.serverUrl+readEndPoint+"/inline/"+uid+(filename?"/"+filename:"")) ;
         }) ;
-      
+
         callback() ;
     } ;
 
