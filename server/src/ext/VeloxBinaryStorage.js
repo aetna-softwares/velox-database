@@ -39,7 +39,7 @@ class VeloxBinaryStorage{
      * @type {object}
      * @property {string} pathStorage The path storage to put binary files
      * @property {boolean} [useChecksum] Save checksum for file (default: true)
-     * @property {string} [checksumAlgo] Checksum algorithm to use (default : md5)
+     * @property {string} [checksumAlgo] Checksum algorithm to use (default : sha256)
      * @property {string} [pathPattern] The pattern to construct path of binary file (default : {table}/{date}/{table_uid}_{uid}{ext})
      * @property {string} [saveEndPoint] The Express end point for binary saving (default : /saveBinary)
      * @property {string} [readEndPoint] The Express end point for binary reading (default : /readBinary)
@@ -64,7 +64,7 @@ class VeloxBinaryStorage{
         this.pathStorageTemp = path.join(this.pathStorage, "temp") ;
         this.pathPattern = options.pathPattern || "{table}/{date}/{table_uid}_{uid}{ext}" ;
         this.useChecksum = options.useChecksum===undefined?true:options.useChecksum ;
-        this.checksumAlgo = options.checksumAlgo || "md5" ;
+        this.checksumAlgo = options.checksumAlgo || "sha256" ;
 
         var self = this ;
         this.extendsProto = {
@@ -141,6 +141,25 @@ class VeloxBinaryStorage{
                     }) ;
                 } ;
             },
+            getDownloadBinaryMiddleware: function(){
+                return (req, res)=>{
+                    let uid = req.query.uid;
+                    let disposition = req.query.action==="download"?"attachment":"inline";  
+                    this.db.getBinary(uid, (err, buffer, record)=>{
+                        if (err) {
+                            this.db.logger.error("get binary failed : ", err, uid);
+                            return res.status(500).json(err);
+                        }
+
+                        let filename = req.query.filename || record.filename ;
+
+                        res.setHeader('Content-disposition', disposition+'; filename=' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
+                        res.setHeader('Content-type', record.mime_type);
+            
+                        res.end(buffer);
+                    }) ;
+                } ;
+            },
             getReadBinaryMiddleware: function(){
                 return (req, res)=>{
                     let uid = req.params.uid;
@@ -171,6 +190,7 @@ class VeloxBinaryStorage{
                 //this is the VeloxDatabaseExpress object
                 app.post(options.saveEndPoint || "/saveBinary", this.getSaveBinaryMiddleware());
                 app.get((options.readEndPoint || "/readBinary")+"/:action/:uid/:filename?", this.getReadBinaryMiddleware());
+                app.get((options.downloadEndPoint || "/downloadBinary"), this.getDownloadBinaryMiddleware());
             }
         ] ;
 
