@@ -80,9 +80,9 @@ class VeloxBinarySync{
         this.dependencies = [] ;
         var self = this ;
         this.extendsProto = {
-            binarySync : function(binaryRecord, file, checksum, action, callback){
+            binarySync : function(binaryRecord, file, checksum, action, context, callback){
                 //this is the VeloxDatabase object
-                self.binarySync(this, binaryRecord, file, checksum, action, {}, callback) ;
+                self.binarySync(this, binaryRecord, file, checksum, action, context, callback) ;
             }
         } ;
         this.extendsExpressProto = {
