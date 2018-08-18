@@ -254,18 +254,18 @@ class VeloxBinarySync{
                     }
                 } ;
                 if(file){
-                    this.checksum(file, (err, computeChecksum) => {
-                        if(err){ return done(err) ;}
-                        if(computeChecksum !== checksum){
-                            return done("Wrong received checksum "+ computeChecksum+" expected "+checksum) ;
-                        }
-                        //reveived expected checksum, save the file in sync storage
-                        let finalPath = this.createTargetPath(binaryRecord, syncUid) ;
-                        fs.copy(file, path.join(this.pathStorage, finalPath), {overwrite: true}, function(err){
-                            if(err){ 
-                                //move failed, rollback transaction
-                                return done(err);
-                            } 
+                    //reveived expected checksum, save the file in sync storage
+                    let finalPath = this.createTargetPath(binaryRecord, syncUid) ;
+                    fs.copy(file, path.join(this.pathStorage, finalPath), {overwrite: true}, function(err){
+                        if(err){ 
+                            //move failed, rollback transaction
+                            return done(err);
+                        } 
+                        this.checksum(file, (err, computeChecksum) => {
+                            if(err){ return done(err) ;}
+                            if(computeChecksum !== checksum){
+                                return done("Wrong received checksum "+ computeChecksum+" expected "+checksum) ;
+                            }
                             if(action.indexOf("upload") === 0){
                                 tx.saveBinary(binaryRecord, file, (err, binaryRecord)=>{
                                     if(err){ return done(err) ;}
@@ -275,7 +275,6 @@ class VeloxBinarySync{
                                 done(null, binaryRecord) ;
                             }
                         }) ;
-
                     }) ;
                 }else{
                     done(null, binaryRecord) ;
