@@ -174,6 +174,9 @@ class VeloxBinarySync{
      */
     binarySync(db, binaryRecord, file, checksum, action, context, callback){
         var syncUid = uuid.v4() ;
+        if(!binaryRecord.creation_datetime){
+            binaryRecord.creation_datetime = new Date() ;
+        }
         db.transaction((tx, done)=>{
             tx.context = context.context ;
             tx.insert("velox_bin_sync_log", {
