@@ -256,7 +256,7 @@ class VeloxBinarySync{
                 if(file){
                     //reveived expected checksum, save the file in sync storage
                     let finalPath = this.createTargetPath(binaryRecord, syncUid) ;
-                    fs.copy(file, path.join(this.pathStorage, finalPath), {overwrite: true}, function(err){
+                    fs.copy(file, path.join(this.pathStorage, finalPath), {overwrite: true}, (err)=>{
                         if(err){ 
                             //move failed, rollback transaction
                             return done(err);
