@@ -316,8 +316,7 @@ class VeloxBinarySync{
      * @param {function} callback called with the checksum
      */
     checksum(filePath, callback){
-        if(!this.useChecksum){ return callback(); }
-        var digest = crypto.createHash(this.checksumAlgo);
+        var digest = crypto.createHash("sha256");
         var stream = fs.createReadStream(filePath);
         stream.on("data", function(d) {digest.update(d);});
         stream.on("error", function (error) {return callback(error);});
