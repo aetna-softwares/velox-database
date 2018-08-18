@@ -253,7 +253,7 @@ class VeloxBinarySync{
                         tx.update("velox_bin_sync_log", {uid: syncUid, status: 'done'}, doneTx) ;
                     }
                 } ;
-                if(file){done() ;
+                if(file){
                     this.checksum(file, (err, computeChecksum) => {
                         if(err){ return done(err) ;}
                         if(computeChecksum !== checksum){
