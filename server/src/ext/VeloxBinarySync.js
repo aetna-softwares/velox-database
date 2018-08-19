@@ -201,7 +201,7 @@ class VeloxBinarySync{
             if(!shouldApplyChange){ return callback() ;}
             db.transaction((tx, doneTx)=>{
                 tx.context = context.context ;
-                let done = (error)=>{
+                let done = (error, binaryRecord)=>{
                     if(error){
                         var strError = "" ;
                         if(error.stack){
@@ -258,7 +258,10 @@ class VeloxBinarySync{
                             }
                         }) ;
                     }else{
-                        tx.update("velox_bin_sync_log", {uid: syncUid, status: 'done'}, doneTx) ;
+                        tx.update("velox_bin_sync_log", {uid: syncUid, status: 'done'}, (err)=>{
+                            if(err){ return doneTx(err) ;}
+                            doneTx(null, binaryRecord) ;
+                        }) ;
                     }
                 } ;
                 if(file){
