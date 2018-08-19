@@ -224,6 +224,7 @@
             if (err) { return callback(err); }
             prepare.bind(this)(function (err) {
                 if (err) { return callback(err); }
+                console.log(file, file.constructor.name) ;
                 storage.saveBinary(file, binaryRecord, function (err) {
                     if (err) { return callback(err); }
                     if (syncAuto) {
@@ -293,6 +294,7 @@
                         if (err) { return callback(err); }
                         storage.openFile(binaryRecord, filename, function (err, url) {
                             if (err) { return callback(err); }
+                            watchFile.bind(this)(binaryRecord) ;
                             callback(null, url);
                         }.bind(this));
                     }.bind(this));
@@ -394,6 +396,9 @@
         }.bind(this));
     }
 
+
+    var syncingRecords = {} ;
+
     /**
      * Sync all this records with server
      * 
@@ -401,9 +406,28 @@
      * @param {function} callback 
      */
     function dosync(binaryRecords, callback) {
+        if(binaryRecords.length > 0 && binaryRecords.every(function(binaryRecord){
+            return syncingRecords[binaryRecord.uid] ;
+        })){
+            //all records are in sync process, wait 1sec and retry
+            return setTimeout(function(){
+                dosync.bind(this)(binaryRecords, callback) ;
+            }.bind(this), 1000) ;
+        }
+
         var binaryRecord = binaryRecords.shift();
         if (!binaryRecord) { return callback(); }
+
+        if(syncingRecords[binaryRecord.uid]){
+            //this record is already in sync, send it back to the end of the list
+            binaryRecords.push(binaryRecord) ;
+            //go to next
+            return dosync.bind(this)(binaryRecords, callback) ;
+        }
+
+        syncingRecords[binaryRecord.uid] = true ;
         var next = function (err) {
+            delete syncingRecords[binaryRecord.uid] ;
             if (err) { return callback(err); }
             dosync.bind(this)(binaryRecords, callback);
         };
@@ -414,11 +438,15 @@
             }
             storage.getLocalInfos(binaryRecord, function (err, currentInfos, lastSyncRecord) {
                 if (err) { return callback(err); }
+                if(currentInfos && currentInfos.file){
+                    currentInfos.file = new Blob([currentInfos.file], {type: binaryRecord.mime_type} ) ;
+                }
                 var localChecksum = currentInfos ? currentInfos.checksum : null;
                 var lastSyncChecksum = lastSyncRecord ? lastSyncRecord.checksum : null;
                 var serverChecksum = binaryRecord.checksum;
                 if (localChecksum && serverChecksum && localChecksum === serverChecksum) {
                     //all checksum are the same, nothing to do
+                    next() ;
                 } else if (!localChecksum && serverChecksum) {
                     //no local file and a server file download it
                     doDownload.bind(this)(binaryRecord, "download-nolocal", next);
@@ -454,6 +482,30 @@
             }.bind(this));
         }.bind(this));
     }
+
+
+    var watchingFiles = {} ;
+    var watchTimers = {} ;
+    function watchFile(binaryRecord){
+        if(storage.watchFile && !watchingFiles[binaryRecord.uid]){
+            watchingFiles[binaryRecord.uid] = true ;
+            storage.watchFile(binaryRecord, function changed(){
+                if(watchTimers[binaryRecord.uid]){
+                    clearTimeout(watchTimers[binaryRecord.uid]) ;
+                    delete watchTimers[binaryRecord.uid] ;
+                }
+                watchTimers[binaryRecord.uid] = setTimeout(function(){
+                    console.log("Modification detected on "+binaryRecord.filename+" "+binaryRecord.uid+" start sync it") ;
+                    dosync.bind(this)([binaryRecord], function(err){
+                        if(err){ return console.log("sync failed", err) ;}
+                        console.log("Sync done for "+binaryRecord.filename+" "+binaryRecord.uid) ;
+                    }) ;
+                }.bind(this), 5000) ;
+            }.bind(this)) ;
+        }
+    }
+
+
 
     return extension;
 

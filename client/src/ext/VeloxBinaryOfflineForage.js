@@ -129,7 +129,7 @@
                 if(err){ return callback(err) ;}
                 checksum(buffer, function(err, hash){
                     if(err){ return callback(err) ;}
-                    var file = new Blob([buffer], {type: binaryRecord.mime_type} ) ;
+                    var file = buffer ;
                     callback(null, {file: file, checksum: hash}, lastSyncRecord) ;
                 }.bind(this));
             }.bind(this));

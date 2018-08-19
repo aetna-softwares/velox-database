@@ -40,7 +40,7 @@
         
 
         var downloadEndPoint = client.options.downloadEndPoint || "downloadBinary" ;
-        var ajaxDownload = client._createEndPointFunction(downloadEndPoint , "GET", null, "arraybuffer",  [ "uid", "action" ]) ;
+        var ajaxDownload = client._createEndPointFunction(downloadEndPoint , "GET", "ajax", null, "arraybuffer",  [ "uid", "action" ]) ;
         var downloadFun = function(uid, action, callback, callbackProgress){
             var xhrUpload = ajaxDownload.bind(client)(uid, action, callback) ;
             if(callbackProgress){

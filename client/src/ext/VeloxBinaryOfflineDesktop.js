@@ -10,6 +10,7 @@ const electron = require('electron');
 const shell = electron.shell;
 const app = electron.app;
 const crypto = require('crypto');
+const chokidar = require('chokidar');
 
 var storagePath = null ;
 var pathPattern = "{table}/{date}/{table_uid}_{uid}/{filename}";
@@ -20,7 +21,11 @@ function mkdirs(p, callback){
     fs.mkdir(p, function(err){
         if(err){
             if(err.code === 'EEXIST'){ return callback() ;}
-            if(err.code === 'ENOENT'){ return mkdirs(path.dirname(p), callback) ;}
+            if(err.code === 'ENOENT'){ return mkdirs(path.dirname(p), function(err){
+                    if(err){ return callback(err) ;}
+                    mkdirs(p, callback) ;
+                }) ;
+            }
             return callback(err) ;
         }
         callback();
@@ -47,7 +52,12 @@ function getBuffer(bufferOrFile, callback){
     if(isBuffer){
         return callback(null, bufferOrFile) ;
     }
-
+    if(typeof(bufferOrFile) === "string"){
+        return callback(null, new Uint8Array(bufferOrFile)) ;
+        //return callback(null, Buffer.from(bufferOrFile)) ;
+    }
+    console.log("buf ????", typeof(bufferOrFile), bufferOrFile.constructor.name, bufferOrFile) ;
+    console.trace();
     fs.readFile(bufferOrFile.path, function(err, buffer){
         if(err){ return callback(err) ;}
         callback(null, buffer) ;
@@ -83,25 +93,26 @@ offlineDesktop.saveBinary = function(bufferOrFile, binaryRecord, callback){
     getBuffer(bufferOrFile, function(err, buffer){
         if(err){ return callback(err) ;}
         var filepath = path.join(storagePath, createTargetPath(binaryRecord)) ;
-        fs.writeFile(filepath, buffer, function(err){
+        console.log("create dir "+path.dirname(filepath)) ;
+        mkdirs(path.dirname(filepath), function(err){
             if(err){ return callback(err) ;}
-            fs.writeFile(createRecordPath(filepath), JSON.stringify(binaryRecord, null, 2), {encoding: "utf8"}, function(err){
+            console.log("write file ",filepath) ;
+            fs.writeFile(filepath, buffer, function(err){
                 if(err){ return callback(err) ;}
-                callback() ;
+                console.log("written file ",filepath) ;
+                fs.writeFile(createRecordPath(filepath), JSON.stringify(binaryRecord, null, 2), {encoding: "utf8"}, function(err){
+                    if(err){ return callback(err) ;}
+                    callback() ;
+                }) ;
             }) ;
-        }) ;
+        });
     }) ;
 } ;
 
-function checksum(filePath, callback){
+function checksum(buffer, callback){
     var digest = crypto.createHash("sha256");
-    var stream = fs.createReadStream(filePath);
-    stream.on("data", function(d) {digest.update(d);});
-    stream.on("error", function (error) {return callback(error);});
-    stream.on("end", function() {
-        var hex = digest.digest("hex");
-        return callback(null, hex);
-    });
+    digest.update(buffer) ;
+    callback(null,digest.digest('hex')) ;
 }
 
 offlineDesktop.getLocalInfos = function(binaryRecord, callback){
@@ -153,6 +164,14 @@ offlineDesktop.markAsUploaded = function(binaryRecord, callback){
     fs.writeFile(recordpath, JSON.stringify(binaryRecord, null, 2), {encoding: "utf8"}, function(err){
         if(err){ return callback(err) ;}
         callback() ;
+    }) ;
+} ;
+
+offlineDesktop.watchFile = function(binaryRecord, callbackChanged){
+    var filepath = path.join(storagePath, createTargetPath(binaryRecord)) ;
+    var watcher = chokidar.watch(filepath, {});
+    watcher.on("change", function(filePath, stats){
+        callbackChanged() ;
     }) ;
 } ;
 
