@@ -128,7 +128,7 @@ class VeloxBinarySync{
                             return res.status(500).end("Missing contents");
                         }
                         let pathUpload = null;
-                        if(files.contents && !files.contents[0]){
+                        if(files.contents && files.contents[0]){
                             pathUpload = files.contents[0].path;
                         } 
 
