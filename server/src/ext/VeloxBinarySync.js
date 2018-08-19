@@ -127,7 +127,10 @@ class VeloxBinarySync{
                             this.db.logger.error("missing contents");
                             return res.status(500).end("Missing contents");
                         }
-                        let pathUpload = files.contents[0].path;
+                        let pathUpload = null;
+                        if(files.contents && !files.contents[0]){
+                            pathUpload = files.contents[0].path;
+                        } 
 
                         let context = {} ;
                         this._setContext(context, req) ;
