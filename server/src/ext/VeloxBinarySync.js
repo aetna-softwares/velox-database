@@ -139,9 +139,11 @@ class VeloxBinarySync{
                                 this.db.logger.error("error when save binary", err);
                                 return res.status(500).json(err) ;
                             }
-                            fs.unlink(pathUpload, (err)=>{
-                                if(err){ this.db.logger.warning("error when delete upload file", err); }
-                            }) ;
+                            if(pathUpload){
+                                fs.unlink(pathUpload, (err)=>{
+                                    if(err){ this.db.logger.warning("error when delete upload file", err); }
+                                }) ;
+                            }
                             res.json(savedRecord) ;
                         }) ;
                     }) ;
