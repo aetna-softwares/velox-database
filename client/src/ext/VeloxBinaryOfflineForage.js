@@ -71,9 +71,11 @@
         }
     };
 
-    function checksum(buffer){
-        var hash = crypto.subtle.digest("SHA-256", buffer);
-        return hash ;
+    function checksum(buffer, callback){
+        crypto.subtle.digest("SHA-256", buffer).then(function(buf){
+            var hash = Array.prototype.map.call(new Uint8Array(buf), x=>(('00'+x.toString(16)).slice(-2))).join('');
+            callback(null, hash) ;
+        }).catch(function(err){ callback(err) ;});
     }
 
     function getBuffer(blobOrFile, callback){
@@ -125,24 +127,19 @@
             if(err){ return callback(err) ;}
             this.localforage.getItem(fileKey(binaryRecord), function(err, buffer){
                 if(err){ return callback(err) ;}
-                callback(null, {file: buffer, checksum: checksum(buffer)}, lastSyncRecord) ;
+                checksum(buffer, function(err, hash){
+                    if(err){ return callback(err) ;}
+                    var file = new Blob([buffer], {type: binaryRecord.mime_type} ) ;
+                    callback(null, {file: file, checksum: hash}, lastSyncRecord) ;
+                }.bind(this));
             }.bind(this));
         }.bind(this));
     } ;
     
-    VeloxBinaryOfflineForage.prototype.getUrl = function(binaryRecord, filename, callback){
-        this.localforage.getItem(recordKey(binaryRecord), function(err, binaryRecord){
-            if(!binaryRecord){
-                return callback(null, null) ;
-            }
+    VeloxBinaryOfflineForage.prototype.getFileBuffer = function(binaryRecord, callback){
+        this.localforage.getItem(fileKey(binaryRecord), function(err, buffer){
             if(err){ return callback(err) ;}
-            this.localforage.getItem(fileKey(binaryRecord), function(err, buffer){
-                if(err){ return callback(err) ;}
-                var blob = new Blob( [ buffer ], { type: binaryRecord.mime_type } );
-                var urlCreator = window.URL || window.webkitURL;
-                var url = urlCreator.createObjectURL( blob );
-                callback(null, url) ;
-            }.bind(this));
+            callback(null, buffer) ;
         }.bind(this));
     } ;
     VeloxBinaryOfflineForage.prototype.openFile = function(binaryRecord, filename, callback){

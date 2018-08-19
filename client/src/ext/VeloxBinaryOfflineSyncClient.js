@@ -12,6 +12,22 @@
     'use strict';
 
     /**
+     * Create an unique ID
+     */
+    function uuidv4() {
+        if(typeof(window.crypto) !== "undefined" && crypto.getRandomValues){
+            return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function(c) {
+                return (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16) ;
+            }) ;
+        }else{
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    }
+
+    /**
      * Tables settings
      */
     var tableSettings = null;
@@ -195,6 +211,13 @@
             return this.constructor.prototype.saveBinary.bind(this)(file, binaryRecord, callback);
         }
 
+        if(!binaryRecord.uid){
+            binaryRecord.uid = uuidv4() ;
+        }
+        if(!binaryRecord.creation_datetime){
+            binaryRecord.creation_datetime = new Date() ;
+        }
+
         this.__velox_database.transactionalChanges([{
             table: "velox_binary", record: binaryRecord
         }], function (err) {
@@ -228,8 +251,11 @@
                 if (syncAuto) {
                     this.syncBinary(binaryRecord, function (err) {
                         if (err) { return callback(err); }
-                        storage.getUrl(binaryRecord, filename, function (err, url) {
+                        storage.getFileBuffer(binaryRecord, function (err, buffer) {
                             if (err) { return callback(err); }
+                            var blob = new Blob( [ buffer ], { type: binaryRecord.mime_type } );
+                            var urlCreator = window.URL || window.webkitURL;
+                            var url = urlCreator.createObjectURL( blob );
                             callback(null, url);
                         }.bind(this));
                     }.bind(this));
@@ -247,6 +273,10 @@
      * Override the download function. will sync before open the file
      */
     function download(recordOrUid, filename, callback) {
+        if(typeof(filename) === "function"){
+            callback = filename;
+            filename = null;
+        }
         this.__velox_database.getByPk("velox_binary", recordOrUid, function (err, binaryRecord) {
             if (err) { return callback(err); }
             if (!binaryRecord) { return callback("Binary record " + JSON.stringify(recordOrUid) + " does not exists"); }
@@ -333,7 +363,7 @@
      * @param {function} callback 
      */
     function doUpload(binaryRecord, currentInfos, action, callback) {
-        this.binarySync(currentInfos.file, binaryRecord, currentInfos.checksum, action, function (err, blob, binaryRecord) {
+        this.binarySync(binaryRecord, currentInfos.file, currentInfos.checksum, action, function (err, blob, binaryRecord) {
             if (err) { return callback(err); }
             if (action.indexOf("upload") === 0) {
                 storage.markAsUploaded(binaryRecord, function (err) {
@@ -355,7 +385,7 @@
      * @param {function} callback 
      */
     function doDownload(binaryRecord, action, callback) {
-        this.binarySync(null, binaryRecord, null, action, function (err, blob, binaryRecord) {
+        this.binarySync(binaryRecord, null, null, action, function (err, blob, binaryRecord) {
             if (err) { return callback(err); }
             storage.saveBinary(blob, binaryRecord, function (err) {
                 if (err) { return callback(err); }
@@ -426,5 +456,6 @@
     }
 
     return extension;
+
 
 })));

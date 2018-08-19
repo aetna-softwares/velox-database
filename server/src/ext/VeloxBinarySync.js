@@ -123,7 +123,7 @@ class VeloxBinarySync{
                             return res.status(500).json(err);
                         }
 
-                        if(action.indexOf("upload") && (!files.contents || !files.contents[0])) {
+                        if(action.indexOf("upload") === 0 && (!files.contents || !files.contents[0])) {
                             this.db.logger.error("missing contents");
                             return res.status(500).end("Missing contents");
                         }
