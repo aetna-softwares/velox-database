@@ -305,8 +305,12 @@ class VeloxBinarySync{
         targetPath = targetPath.replace(new RegExp("{table_uid}", "g"), binaryRecord.table_uid || "no_uid") ;
         targetPath = targetPath.replace(new RegExp("{uid}", "g"), binaryRecord.uid) ;
         targetPath = targetPath.replace(new RegExp("{ext}", "g"), binaryRecord.filename?path.extname(binaryRecord.filename):"") ;
-        targetPath = targetPath.replace(new RegExp("{date}", "g"), binaryRecord.creation_datetime.toISOString().substring(0,10)) ;
-        targetPath = targetPath.replace(new RegExp("{time}", "g"), binaryRecord.creation_datetime.toISOString().substring(11,19).replace(/:/g, "_")) ;
+        var creationDatetimeIso = binaryRecord.creation_datetime ;
+        if(typeof(creationDatetimeIso) !== "string"){
+            creationDatetimeIso = binaryRecord.creation_datetime.toISOString() ;
+        }
+        targetPath = targetPath.replace(new RegExp("{date}", "g"), creationDatetimeIso.substring(0,10)) ;
+        targetPath = targetPath.replace(new RegExp("{time}", "g"), creationDatetimeIso.substring(11,19).replace(/:/g, "_")) ;
         var dateHour = new Date() ;
         dateHour = dateHour.toISOString().substring(0,10)+"_"+dateHour.toISOString().substring(11,19).replace(/:/g, "_") ;
         targetPath = targetPath.replace(new RegExp("{datehour_sync}", "g"), dateHour) ;
