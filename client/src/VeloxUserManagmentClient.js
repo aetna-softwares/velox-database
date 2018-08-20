@@ -108,7 +108,7 @@
         var requestPasswordTokenEndPoint = client.options.requestPasswordTokenEndPoint || "requestPasswordToken" ;
         var ajaxRequestPasswordToken = client._createEndPointFunction(requestPasswordTokenEndPoint , "POST", [ "userEmail", "email" ]) ;
         var requestPasswordTokenFun = function(userEmail, email, callback){
-            ajaxRequestPasswordToken.bind(client)(userEmail, email, function(err, success){
+            ajaxRequestPasswordToken.bind(client)(userEmail, JSON.stringify(email), function(err, success){
                 if(err){
                     return callback(err) ;
                 }

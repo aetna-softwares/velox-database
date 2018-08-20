@@ -580,7 +580,7 @@ class VeloxUserManagment{
                 });
                 app.post(options.requestPasswordTokenEndPoint || "/requestPasswordToken",
                     (req, res) => {
-                        this.db.requestPasswordToken(req.body.userEmail, req.body.email, (err, user)=>{
+                        this.db.requestPasswordToken(req.body.userEmail, JSON.parse(req.body.email), (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
