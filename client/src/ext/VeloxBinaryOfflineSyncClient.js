@@ -328,16 +328,18 @@
                 return cb(null, [binaryRecords]);
             }
             var tablesWithoutPrefetch = [];
-            Object.keys(tableSettings).forEach(function (tableName) {
-                if (!tableSettings[tableName].prefetch) {
-                    tablesWithoutPrefetch.push(tableName);
-                }
-            });
+            if(tableSettings){
+                Object.keys(tableSettings).forEach(function (tableName) {
+                    if (!tableSettings[tableName].prefetch) {
+                        tablesWithoutPrefetch.push(tableName);
+                    }
+                });
+            }
             var searchBinary = {};
             if (tablesWithoutPrefetch.length > 0) {
                 searchBinary = { table_name: { ope: "not in", value: tablesWithoutPrefetch } };
             }
-            this.search("velox_binary", searchBinary, function (err, binaries) {
+            this.__velox_database.search("velox_binary", searchBinary, function (err, binaries) {
                 if (err) { return callback(err); }
                 var binaryRecords = binaries.filter(function (b) {
                     return getBinarySettings(b).cached;
@@ -430,7 +432,7 @@
             delete syncingRecords[binaryRecord.uid] ;
             if (err) { return callback(err); }
             dosync.bind(this)(binaryRecords, callback);
-        };
+        }.bind(this);
         this.__velox_database.getByPk("velox_binary", binaryRecord, function (err, binaryRecord) {
             if (err) { return callback(err); }
             if (!binaryRecord) {
