@@ -997,9 +997,42 @@ class VeloxUserManagment{
                 this.interceptClientQueries.push(
                     {name : "update", table: table.name, before : createRestrictFunction(table, "update") }
                 );
+                
                     
                 this.interceptClientQueries.push(
                     {name : "remove", table: table.name, before : createRestrictFunction(table, "remove") }
+                );
+
+                this.interceptClientQueries.push(
+                    {name : "update", table: table.name, after : function(tableName, record, callback){
+                            let client = this;
+                            if(!client.cache.schema.velox_modif_track){
+                                return callback() ;
+                            }
+
+                            let user = this.context.req.user ;
+                            let userUid = null;
+                            let realmCode = null;
+
+                            //force user col if any
+                            if(tableName !== 'velox_user' && table.userCol && table.userCol.indexOf(".") === -1){
+                                userUid = user.uid;
+                            }
+
+                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && user.realms.length>0){
+                                realmCode = user.realms[0].realm_code;
+                            }
+                            var tableDef = client.cache.schema[tableName] ;
+                            let pkValue = tableDef.pk.map(function(pk){
+                                return ""+record[pk] ;
+                            }).join("$_$") ;
+                            client.query("UPDATE velox_modif_track SET realm_code = $1, user_uid = $2 WHERE table_name = $3 AND table_uid = $4", 
+                                [realmCode, userUid, tableName, pkValue], (err)=>{
+                                    if(err){ return callback(err) ;}
+                                    callback() ;
+                                }) ;
+                        } 
+                    }
                 );
             }
         }

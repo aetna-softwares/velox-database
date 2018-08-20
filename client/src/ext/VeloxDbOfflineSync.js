@@ -307,6 +307,13 @@
                 }
             }) ;
         }
+        if(tableName === "velox_user_session" || tableName === "velox_bin_sync_log"
+         || tableName === "velox_delete_track"
+         || tableName === "velox_mail_smtp_server"
+         || tableName === "velox_modif_table_version"
+         || tableName === "velox_mail"){
+            return false;
+        }
         if(tableSettings){
             var isOfflineTable = false;
             tableSettings.some(function(table){

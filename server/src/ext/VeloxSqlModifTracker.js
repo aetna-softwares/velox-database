@@ -303,6 +303,8 @@ class VeloxSqlModifTracker{
                 column_name varchar(128),
                 column_before varchar(255),
                 column_after varchar(255),
+                realm_code varchar(30),
+                user_uid varchar(40),
                 PRIMARY KEY (table_name, table_uid, version_table, version_record, version_date, column_name)
             )
             ` ;

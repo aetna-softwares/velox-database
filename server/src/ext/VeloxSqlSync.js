@@ -71,6 +71,9 @@ class VeloxSqlSync{
 
         this.maskedColumns = options.maskedColumns || [] ;
         this.maskedColumns.push({table: "velox_user", column: "password"}) ;
+        this.maskedColumns.push({table: "velox_mail_smtp_server", column: "host"}) ;
+        this.maskedColumns.push({table: "velox_mail_smtp_server", column: "pass"}) ;
+        this.maskedColumns.push({table: "velox_mail_smtp_server", column: "username"}) ;
 
         this.dependencies = [
             new VeloxSqlModifTracker(options),
