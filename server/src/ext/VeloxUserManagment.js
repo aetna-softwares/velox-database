@@ -1029,11 +1029,14 @@ class VeloxUserManagment{
                             let pkValue = tableDef.pk.map(function(pk){
                                 return ""+record[pk] ;
                             }).join("$_$") ;
-                            client.query("UPDATE velox_modif_track SET realm_code = $1, user_uid = $2 WHERE table_name = $3 AND table_uid = $4", 
+                            client.unsafe((client, done)=>{ 
+                                client.query("UPDATE velox_modif_track SET realm_code = $1, user_uid = $2 WHERE table_name = $3 AND table_uid = $4", 
                                 [realmCode, userUid, tableName, pkValue], (err)=>{
-                                    if(err){ return callback(err) ;}
-                                    callback() ;
+                                    if(err){ return done(err) ;}
+                                    done() ;
                                 }) ;
+                            }, callback) ;
+                            
                         } 
                     }
                 );

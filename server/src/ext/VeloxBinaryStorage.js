@@ -546,7 +546,9 @@ class VeloxBinaryStorage{
                 mime_type VARCHAR(75),
                 description  VARCHAR(128),
                 filename VARCHAR(128),
-                path VARCHAR(512)
+                path VARCHAR(512),
+                realm_code varchar(30),
+                user_uid varchar(40)
             )
             ` ;
         }
