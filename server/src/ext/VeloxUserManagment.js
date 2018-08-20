@@ -1009,19 +1009,22 @@ class VeloxUserManagment{
                             if(!client.cache.schema.velox_modif_track){
                                 return callback() ;
                             }
-
+                            if(!this.context || !this.context.req || !this.context.req.user){
+                                return callback() ;
+                            }
                             let user = this.context.req.user ;
+
                             let userUid = null;
                             let realmCode = null;
 
-                            //force user col if any
-                            if(tableName !== 'velox_user' && table.userCol && table.userCol.indexOf(".") === -1){
+                            if(user){
                                 userUid = user.uid;
                             }
 
-                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && user.realms.length>0){
+                            if(user && user.realms.length>0){
                                 realmCode = user.realms[0].realm_code;
                             }
+
                             var tableDef = client.cache.schema[tableName] ;
                             let pkValue = tableDef.pk.map(function(pk){
                                 return ""+record[pk] ;
