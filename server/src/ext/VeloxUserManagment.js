@@ -1426,7 +1426,7 @@ class VeloxUserManagment{
                 email.text = (email.text || "").replace(new RegExp("__activation_token__", "g"), updateData.activation_token);
                 email.html = (email.html || "").replace(new RegExp("__activation_token__", "g"), updateData.activation_token);
 
-                client.insert("velox_email", email, (err)=>{
+                client.insert("velox_mail", email, (err)=>{
                     if(err){ return done(err); }
                     client.update("velox_user", updateData, (err)=>{
                         if(err){ return done(err); }
