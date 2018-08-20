@@ -93,6 +93,30 @@
         } ;
         client._registerEndPointFunction(changePasswordEndPoint, changePasswordFun) ;
         
+        var changePasswordTokenEndPoint = client.options.changePasswordTokenEndPoint || "changeUserPasswordToken" ;
+        var ajaxChangePasswordToken = client._createEndPointFunction(changePasswordTokenEndPoint , "POST", [ "tokenPassword", "newPassword" ]) ;
+        var changePasswordTokenFun = function(oldPassword, newPassword, callback){
+            ajaxChangePasswordToken.bind(client)(oldPassword, newPassword, function(err, success){
+                if(err){
+                    return callback(err) ;
+                }
+                callback(null, success) ;
+            }.bind(client)) ;
+        } ;
+        client._registerEndPointFunction(changePasswordTokenEndPoint, changePasswordTokenFun) ;
+        
+        var requestPasswordTokenEndPoint = client.options.requestPasswordTokenEndPoint || "requestPasswordToken" ;
+        var ajaxRequestPasswordToken = client._createEndPointFunction(requestPasswordTokenEndPoint , "POST", [ "userEmail", "email" ]) ;
+        var requestPasswordTokenFun = function(userEmail, email, callback){
+            ajaxRequestPasswordToken.bind(client)(userEmail, email, function(err, success){
+                if(err){
+                    return callback(err) ;
+                }
+                callback(null, success) ;
+            }.bind(client)) ;
+        } ;
+        client._registerEndPointFunction(requestPasswordTokenEndPoint, requestPasswordTokenFun) ;
+        
         //add auth api entry
         var googleAuthEndPoint = client.options.googleAuthEndPoint || "auth/google" ;
         var ajaxGoogleAuth = client._createEndPointFunction(googleAuthEndPoint , "POST", [ "id_token" ]) ;

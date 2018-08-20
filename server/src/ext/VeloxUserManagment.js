@@ -178,6 +178,14 @@ class VeloxUserManagment{
                 //this is the VeloxDatabase object
                 self.changePassword(this, userUid, oldPassword, newPassword, callback) ;
             },
+            changeUserPasswordToken : function(tokenPassword, newPassword, callback){
+                //this is the VeloxDatabase object
+                self.changePasswordToken(this, tokenPassword, newPassword, callback) ;
+            },
+            requestPasswordToken : function(userEmail, email, callback){
+                //this is the VeloxDatabase object
+                self.requestPasswordToken(this, userEmail, email, callback) ;
+            },
             createUser : function(user, callback){
                 //this is the VeloxDatabase object
                 self.createUser(this, user, callback) ;
@@ -559,6 +567,20 @@ class VeloxUserManagment{
                 app.post(options.changePasswordEndPoint || "/changeUserPassword",
                     (req, res) => {
                         this.db.changeUserPassword(req.user.uid, req.body.oldPassword, req.body.newPassword, (err, user)=>{
+                            if(err){ return res.status(500).json(err); }
+                            res.json(user) ;
+                        }) ;
+                });
+                app.post(options.changePasswordTokenEndPoint || "/changeUserPasswordToken",
+                    (req, res) => {
+                        this.db.changeUserPasswordToken(req.body.tokenPassword, req.body.newPassword, (err, user)=>{
+                            if(err){ return res.status(500).json(err); }
+                            res.json(user) ;
+                        }) ;
+                });
+                app.post(options.requestPasswordTokenEndPoint || "/requestPasswordToken",
+                    (req, res) => {
+                        this.db.requestPasswordToken(req.body.userEmail, req.body.email, (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
@@ -1347,6 +1369,73 @@ class VeloxUserManagment{
             });
         }, callback) ;
     }
+   
+    /**
+     * Change user password with token
+     * 
+     * @param {VeloxDatabase} db the db access
+     * @param {string} passwordToken the password token
+     * @param {string} newPassword the new password
+     * @param {function(err, boolean)} callback called with true if succeed
+     */
+    changePasswordToken(db, passwordToken, newPassword, callback){
+        db.transaction((client, done)=>{
+            let sql = "SELECT *, profile_code as profile FROM velox_user WHERE password_token = $1 AND (password_token_validity IS NULL OR password_token_validity > now())" ;
+            let params = [passwordToken];
+            client._query(sql, params, (err, results)=>{
+                if(err){ return done(err); }
+
+                if(results.rows.length === 0){
+                    return done(null, false) ;
+                }
+                var user = results.rows[0] ;
+
+               
+                var updateData = {password: newPassword, uid: user.uid} ;
+                client.update("velox_user", updateData, (err, user)=>{
+                    if(err){ return done(err); }
+                    return done(null, true) ;
+                }) ;
+            });
+        }, callback) ;
+    }
+
+    /**
+     * Change user password with token
+     * 
+     * @param {VeloxDatabase} db the db access
+     * @param {string} userEmail User email
+     * @param {object} email email object
+     * @param {function(err, boolean)} callback called with true if succeed
+     */
+    requestPasswordToken(db, userEmail, email, callback){
+        db.transaction((client, done)=>{
+            let sql = "SELECT *, profile_code as profile FROM velox_user WHERE email = $1" ;
+            let params = [userEmail];
+            client._query(sql, params, (err, results)=>{
+                if(err){ return done(err); }
+
+                if(results.rows.length === 0){
+                    return done(null, false) ;
+                }
+                var user = results.rows[0] ;
+
+                email.to_addr = user.email ;
+               
+                var updateData = {activation_token: uuid.v4(), activation_token_validity: new Date(new Date().getTime()+(2*60*60*1000)), uid: user.uid} ;
+                email.text = (email.text || "").replace(new RegExp("__activation_token__", "g"), updateData.activation_token);
+                email.html = (email.html || "").replace(new RegExp("__activation_token__", "g"), updateData.activation_token);
+
+                client.insert("velox_email", email, (err)=>{
+                    if(err){ return done(err); }
+                    client.update("velox_user", updateData, (err)=>{
+                        if(err){ return done(err); }
+                        return done(null, true) ;
+                    }) ;
+                }) ;
+            });
+        }, callback) ;
+    }
 
     /**
      * Activate the user using the activation token
@@ -1633,6 +1722,8 @@ class VeloxUserManagment{
             "disabled BOOLEAN DEFAULT FALSE",
             "active BOOLEAN DEFAULT FALSE",
             "activation_token VARCHAR(40)",
+            "password_token VARCHAR(40)",
+            "password_token_validity TIMESTAMP",
             "lang VARCHAR(5)",
             "profile_code VARCHAR(30) REFERENCES velox_user_profile(code)",
         ].concat(metaLines) ;
