@@ -1379,6 +1379,9 @@ class VeloxUserManagment{
      * @param {function(err, boolean)} callback called with true if succeed
      */
     changePasswordToken(db, passwordToken, newPassword, callback){
+        if(!passwordToken){
+            return callback("INVALID_TOKEN") ;
+        }
         db.transaction((client, done)=>{
             let sql = "SELECT *, profile_code as profile FROM velox_user WHERE password_token = $1 AND (password_token_validity IS NULL OR password_token_validity > now())" ;
             let params = [passwordToken];
@@ -1386,12 +1389,12 @@ class VeloxUserManagment{
                 if(err){ return done(err); }
 
                 if(results.rows.length === 0){
-                    return done(null, false) ;
+                    return done("INVALID_TOKEN") ;
                 }
                 var user = results.rows[0] ;
 
                
-                var updateData = {password: newPassword, uid: user.uid} ;
+                var updateData = {password: newPassword, uid: user.uid, password_token: null} ;
                 client.update("velox_user", updateData, (err, user)=>{
                     if(err){ return done(err); }
                     return done(null, true) ;
