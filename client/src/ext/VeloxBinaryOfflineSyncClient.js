@@ -239,6 +239,10 @@
      * Override the download function. will sync before open the file
      */
     function url(recordOrUid, filename, callback) {
+        if(typeof(filename) === "function"){
+            callback = filename;
+            filename = null;
+        }
         this.__velox_database.getByPk("velox_binary", recordOrUid, function (err, binaryRecord) {
             if (err) { return callback(err); }
             if (!binaryRecord) { return callback("Binary record " + JSON.stringify(recordOrUid) + " does not exists"); }
