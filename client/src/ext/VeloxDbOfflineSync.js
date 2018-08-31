@@ -745,7 +745,7 @@
                                     !distantVersion || //case when distant version number is unknown, should sync for safety
                                     !localVersion ||   //case when local version is unkown, never seen
                                     tableToForceRefresh[table] || //case when refresh is forced
-                                    localVersion < distantVersion //case when distant version higher
+                                    Number(localVersion) < Number(distantVersion) //case when distant version higher
                                 ) ;
                             }) ;
 

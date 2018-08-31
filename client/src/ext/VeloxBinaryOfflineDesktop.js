@@ -100,10 +100,7 @@ offlineDesktop.saveBinary = function(bufferOrFile, binaryRecord, callback){
             fs.writeFile(filepath, buffer, function(err){
                 if(err){ return callback(err) ;}
                 console.log("written file ",filepath) ;
-                fs.writeFile(createRecordPath(filepath), JSON.stringify(binaryRecord, null, 2), {encoding: "utf8"}, function(err){
-                    if(err){ return callback(err) ;}
-                    callback() ;
-                }) ;
+                callback() ;
             }) ;
         });
     }) ;
@@ -120,19 +117,25 @@ offlineDesktop.getLocalInfos = function(binaryRecord, callback){
     var recordpath = createRecordPath(filepath) ;
     fs.readFile(recordpath, {encoding: "utf8"}, function(err, recordStr){
         if(err){
-            if(err.code === 'ENOENT'){ 
-                return callback(null, null, null) ;
+            if(err.code !== 'ENOENT'){ 
+                return callback(err) ;
             }
-            return callback(err) ;
         }
         var lastSyncRecord = null;
-        try {
-            lastSyncRecord = JSON.parse(recordStr) ;
-        } catch(err){
-            return callback(err) ;
+        if(recordStr){
+            try {
+                lastSyncRecord = JSON.parse(recordStr) ;
+            } catch(err){
+                return callback(err) ;
+            }
         }
         fs.readFile(filepath, function(err, buffer){
-            if(err){ return callback(err) ;}
+            if(err){ 
+                if(err.code === 'ENOENT'){ 
+                    return callback(null, null, null) ;
+                }
+                return callback(err) ;
+            }
             checksum(buffer, function(err, hash){
                 if(err){ return callback(err) ;}
                 var file = new Uint8Array(buffer) ;

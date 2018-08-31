@@ -183,10 +183,6 @@
         var table = binaryRecord.table_name;
         var settings = tableSettings && tableSettings[table]?tableSettings[table] : { cached: true, prefetch: true };
 
-        if (!settings.conflictResolver) {
-            settings.conflictResolver = conflictResolver;
-        }
-
         var cachedFun = settings.cached;
         if (typeof (cachedFun) !== "function") {
             cachedFun = function (binaryRecord) { return settings.cached; };
@@ -197,7 +193,8 @@
         }
         return {
             cached: cachedFun(binaryRecord),
-            prefetch: prefetchFun(binaryRecord)
+            prefetch: prefetchFun(binaryRecord),
+            conflictResolver: settings.conflictResolver || conflictResolver
         };
     }
 
@@ -228,7 +225,12 @@
                 storage.saveBinary(file, binaryRecord, function (err) {
                     if (err) { return callback(err); }
                     if (syncAuto) {
-                        this.syncBinary(binaryRecord, callback);
+                        this.syncBinary(binaryRecord, function(err){
+                            if (err) { return callback(err); }
+                            callback(null, binaryRecord) ;
+                        });
+                    }else{
+                        callback(null, binaryRecord) ;
                     }
                 }.bind(this));
             }.bind(this));
@@ -397,7 +399,10 @@
             if (err) { return callback(err); }
             storage.saveBinary(blob, binaryRecord, function (err) {
                 if (err) { return callback(err); }
-                callback();
+                storage.markAsUploaded(binaryRecord, function (err) {
+                    if (err) { return callback(err); }
+                    callback();
+                }.bind(this));
             }.bind(this));
         }.bind(this));
     }

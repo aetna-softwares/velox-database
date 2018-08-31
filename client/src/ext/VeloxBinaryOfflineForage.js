@@ -111,22 +111,20 @@
             if(err){ return callback(err) ;}
             this.localforage.setItem(fileKey(binaryRecord), buffer, function(err){
                 if(err){ return callback(err) ;}
-                this.localforage.setItem(recordKey(binaryRecord), binaryRecord, function(err){
-                    if(err){ return callback(err) ;}
-                    callback() ;
-                }.bind(this));
+                callback() ;
             }.bind(this));
         }.bind(this)) ;
     } ;
 
     VeloxBinaryOfflineForage.prototype.getLocalInfos = function(binaryRecord, callback){
         this.localforage.getItem(recordKey(binaryRecord), function(err, lastSyncRecord){
-            if(!lastSyncRecord){
-                return callback(null, null, null) ;
-            }
             if(err){ return callback(err) ;}
             this.localforage.getItem(fileKey(binaryRecord), function(err, buffer){
                 if(err){ return callback(err) ;}
+                if(!buffer){
+                    //no local buffer, this record does not exists
+                    return callback(null, null, null) ;
+                }
                 checksum(buffer, function(err, hash){
                     if(err){ return callback(err) ;}
                     var file = buffer ;
@@ -154,8 +152,12 @@
                 var link = document.createElement('a');
                 link.href = window.URL.createObjectURL(blob);
                 link.download = filename || binaryRecord.filename;
+                document.body.appendChild(link) ;
                 link.click();
                 callback(null) ;
+                setTimeout(function(){
+                    document.body.removeChild(link) ;
+                }, 10) ;
             }.bind(this));
         }.bind(this));
     } ;
