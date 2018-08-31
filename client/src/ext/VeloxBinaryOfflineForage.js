@@ -12,8 +12,17 @@
     'use strict';
 
     var LOCALFORAGE_VERSION = "1.7.2";
+    var LIE_VERSION = "3.3.0";
 
     var LOCALFORAGE_LIB = [
+        {
+            name: "lie-polyfill",
+            type: "js",
+            version: LIE_VERSION,
+            cdn: "https://cdnjs.cloudflare.com/ajax/libs/lie/$VERSION/lie.polyfill.min.js",
+            bowerPath: "lie/dist/lie.polyfill.min.js",
+            npmPath: "lie/dist/lie.polyfill.min.js"
+        },
         {
             name: "localforage",
             type: "js",
@@ -72,10 +81,28 @@
     };
 
     function checksum(buffer, callback){
-        crypto.subtle.digest("SHA-256", buffer).then(function(buf){
-            var hash = Array.prototype.map.call(new Uint8Array(buf), x=>(('00'+x.toString(16)).slice(-2))).join('');
-            callback(null, hash) ;
-        }).catch(function(err){ callback(err) ;});
+        var res;
+        try{
+            console.log("before crypto");
+            res = (window.crypto||window.msCrypto).subtle.digest("SHA-256", buffer) ;
+            console.log("after crypto compl ?", res);
+        }catch(e){
+            callback(e) ;
+        }
+        if (res.then) {
+            console.log("after crypto is then");
+            res.then(function(buf){
+                var hash = Array.prototype.map.call(new Uint8Array(buf), function(x){ return (('00'+x.toString(16)).slice(-2)); } ).join('');
+                callback(null, hash) ;
+            }).catch(function(err){ callback(err) ;});
+        } else {    // IE11
+            console.log("after crypto is NOT THEN");
+            res.oncomplete=function() { // operation is complete
+                var hash = Array.prototype.map.call(new Uint8Array(res.result), function(x){ return (('00'+x.toString(16)).slice(-2)); } ).join('');
+                callback(null, hash) ;
+            };
+        }
+        
     }
 
     function getBuffer(blobOrFile, callback){

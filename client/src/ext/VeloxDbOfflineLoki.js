@@ -319,7 +319,7 @@
                     //console.log(">>END join "+table+" > "+join.otherTable+" (name : "+join.name+") RESULTS ", otherRecords);
                     if(join.flatten){
                         if(result.records[0]){
-                            Object.keys(result.records[0]).forEach((k)=>{
+                            Object.keys(result.records[0]).forEach(function(k){
                                 r[k] = result.records[0][k] ;
                             }) ;
                         }
