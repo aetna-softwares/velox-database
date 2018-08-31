@@ -607,6 +607,10 @@
                             tableToForceRefresh[c.table] = true ;
                         }) ;
                     }
+                    if(localChanges[0].changes.some(function(c){ return c.table === "velox_map" ;})){
+                        //always refresh velox_map after insert/update because local may don't have full PK (because of real/user restrict added by server)
+                        tableToForceRefresh["velox_map"] = true ;
+                    }
                     removeOfflineChange(0);
                     //go to next sync
                     uploadChanges.bind(this)(callback);
