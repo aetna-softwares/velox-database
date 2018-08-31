@@ -758,7 +758,14 @@ class VeloxUserManagment{
 
                             //no full read access granted to this user, get available rules
                             let authorizedLevelsOnRealm = [] ;
+                            let authorizedLevelsRealmEmpty = [] ;
                             let authorizedLevelsOnUser = [] ;
+                            let rulesOfUser = table.rules.filter(function(rule){
+                                return (rule.profile === profileLevel || ( rule.profile.indexOf && rule.profile.indexOf(profileLevel) !== -1 ) ) ;
+                            }) ;
+                            if(rulesOfUser.length === 0){
+                                rulesOfUser = table.rules ;
+                            }
                             for(let rule of table.rules){
                                 if(!useProfile){
                                     //don't use profile, so consider as "super admin"
@@ -769,6 +776,13 @@ class VeloxUserManagment{
                                         authorizedLevelsOnRealm = authorizedLevelsOnRealm.concat(rule.profile) ;
                                     }else{
                                         authorizedLevelsOnRealm.push(rule.profile) ;
+                                    }
+                                    if(rule.realmCanBeEmpty){
+                                        if(Array.isArray(rule.profile)){
+                                            authorizedLevelsRealmEmpty = authorizedLevelsRealmEmpty.concat(rule.profile) ;
+                                        }else{
+                                            authorizedLevelsRealmEmpty.push(rule.profile) ;
+                                        }
                                     }
                                 }
                                 if(authorizedLevelsOnRealm.length === 0){
@@ -789,7 +803,12 @@ class VeloxUserManagment{
                                 var currentTable = table.name ;
                                 realmColPath.forEach((p, i)=>{
                                     if(i === realmColPath.length-1){
-                                        from += ` JOIN velox_link_user_realm r ON ${currentTable}.${p} = r.realm_code 
+                                        let emptyAllowedCondition = "";
+                                        if(authorizedLevelsRealmEmpty.length > 0){
+                                            emptyAllowedCondition = `OR (p.level IN (${authorizedLevelsRealmEmpty.join(", ")}) AND ${currentTable}.${p} IS NULL)` ;
+                                        }
+                                        
+                                        from += ` JOIN velox_link_user_realm r ON (${currentTable}.${p} = r.realm_code ${emptyAllowedCondition})
                                         JOIN velox_user u ON u.uid = r.user_uid
                                         JOIN velox_user_profile p ON p.code = COALESCE(r.profile_code, u.profile_code)
                                         ` ;
