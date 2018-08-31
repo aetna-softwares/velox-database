@@ -801,14 +801,15 @@ class VeloxUserManagment{
                                 var realmColPath = table.realmCol.split(".") ;
                                 var from = `FROM ${table.name}` ;
                                 var currentTable = table.name ;
+                                let emptyAllowedCondition = "";
                                 realmColPath.forEach((p, i)=>{
                                     if(i === realmColPath.length-1){
-                                        let emptyAllowedCondition = "";
+                                        let emptyJoinCondition = "";
                                         if(authorizedLevelsRealmEmpty.length > 0){
-                                            emptyAllowedCondition = `OR (p.level IN (${authorizedLevelsRealmEmpty.join(", ")}) AND ${currentTable}.${p} IS NULL)` ;
+                                            emptyAllowedCondition = `AND (${currentTable}.${p} = r.realm_code OR (p.level IN (${authorizedLevelsRealmEmpty.join(", ")}) AND ${currentTable}.${p} IS NULL))` ;
+                                            emptyJoinCondition = `OR  ${currentTable}.${p} IS NULL` ;
                                         }
-                                        
-                                        from += ` JOIN velox_link_user_realm r ON (${currentTable}.${p} = r.realm_code ${emptyAllowedCondition})
+                                        from += ` JOIN velox_link_user_realm r ON (${currentTable}.${p} = r.realm_code ${emptyJoinCondition})
                                         JOIN velox_user u ON u.uid = r.user_uid
                                         JOIN velox_user_profile p ON p.code = COALESCE(r.profile_code, u.profile_code)
                                         ` ;
@@ -817,11 +818,12 @@ class VeloxUserManagment{
                                         currentTable = p ;
                                     }
                                 }) ;
+
                                 return `
                                     (SELECT DISTINCT ${table.name}.*
                                     ${from} 
-                                    
-                                    WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")}))
+                                    WHERE r.user_uid = '${client.context.req.user.uid}' AND p.level IN (${authorizedLevelsOnRealm.join(", ")})
+                                    ${emptyAllowedCondition})
                                 `;
                             } else if (authorizedLevelsOnUser.length > 0) {
                                     //create a sub query restricted on user for authorized level
