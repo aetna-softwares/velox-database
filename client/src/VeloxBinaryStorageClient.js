@@ -91,6 +91,10 @@
         }) ;
 
         client._registerEndPointFunction(readEndPoint+"/url", function(recordOrUid, filename, callback){
+            if(typeof(filename) === "function"){
+                callback = filename;
+                filename = null; 
+            }
             var uid = recordOrUid;
             if(typeof(recordOrUid) === "object"){
                 uid = recordOrUid.uid ;
