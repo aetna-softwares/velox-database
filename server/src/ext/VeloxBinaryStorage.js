@@ -151,9 +151,9 @@ class VeloxBinaryStorage{
                             return res.status(500).json(err);
                         }
 
-                        let filename = req.query.filename || record.filename ;
+                        let filename = req.query.filename || record.filename || "file" ;
 
-                        res.setHeader('Content-disposition', disposition+'; filename=' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
+                        res.setHeader('Content-disposition', disposition+'; filename="' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_")+'"');
                         res.setHeader('Content-type', record.mime_type);
             
                         res.end(buffer);
@@ -174,9 +174,9 @@ class VeloxBinaryStorage{
                             res.cookie(req.query.downloadToken, "here is your download cookie",  { httpOnly: false , secure : false}) ;
                         }
 
-                        let filename = req.params.filename || record.filename ;
+                        let filename = req.params.filename || record.filename || "file" ;
 
-                        res.setHeader('Content-disposition', disposition+'; filename=' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_"));
+                        res.setHeader('Content-disposition', disposition+'; filename="' + filename.replace(/[^a-zA-Z.\-_0-9]/g, "_")+'"');
                         res.setHeader('Content-type', record.mime_type);
             
                         res.end(buffer);
