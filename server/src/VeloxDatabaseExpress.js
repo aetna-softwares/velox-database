@@ -1,5 +1,5 @@
 const url = require('url');
-
+const multiparty = require('multiparty');
 class VeloxDatabaseExpress {
      /**
      * @typedef VeloxDatabaseOptions
@@ -159,16 +159,37 @@ class VeloxDatabaseExpress {
                         res.status(200).json(result) ;
                     }) ;
                 } else if(table === "transactionalChanges"){
-                    this.db.transaction((tx, done)=>{
-                        this._setContext(tx, req) ;
-                        tx.changes(record, done) ;
-                    }, (err, modifiedRecord)=>{
+                    var form = new multiparty.Form();
+                    form.parse(req, (err, fields, files) => {
                         if(err){ 
                             this.db.logger.error(this._formatErrLogger(err, req)) ;
                             return res.status(500).end(this._formatErr(err)) ; 
                         }
-                        res.status(200).json(modifiedRecord) ;
+                        if(!fields.changes && !fields.changes[0]){
+                            let err = "Missing changes" ;
+                            this.db.logger.error(this._formatErrLogger(err, req)) ;
+                            return res.status(500).end(this._formatErr(err)) ; 
+                        }
+                        let changes ;
+                        try{
+                            changes = JSON.parse(fields.changes[0]) ;
+                        }catch(err){
+                            this.db.logger.error(this._formatErrLogger(err, req)) ;
+                            return res.status(500).end(this._formatErr(err)) ; 
+                        }
+
+                        this.db.transaction((tx, done)=>{
+                            this._setContext(tx, req) ;
+                            tx.changes(changes, done) ;
+                        }, (err, modifiedRecord)=>{
+                            if(err){ 
+                                this.db.logger.error(this._formatErrLogger(err, req)) ;
+                                return res.status(500).end(this._formatErr(err)) ; 
+                            }
+                            res.status(200).json(modifiedRecord) ;
+                        }) ;
                     }) ;
+
                 } else if(table === "schema"){
                     res.status(200).json(schema) ;
                 } else if(table === "multiread"){
