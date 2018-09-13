@@ -165,7 +165,7 @@ class VeloxDatabaseExpress {
                             this.db.logger.error(this._formatErrLogger(err, req)) ;
                             return res.status(500).end(this._formatErr(err)) ; 
                         }
-                        if(!fields.changes && !fields.changes[0]){
+                        if(!fields.changes || !fields.changes[0]){
                             let err = "Missing changes" ;
                             this.db.logger.error(this._formatErrLogger(err, req)) ;
                             return res.status(500).end(this._formatErr(err)) ; 
