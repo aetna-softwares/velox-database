@@ -127,6 +127,13 @@ class VeloxMailManagment{
                 text: mail.text, // plain text body
                 html: mail.html // html body
             };
+
+            if(smtpServer.username){
+                //put in reply-to to avoid spam detection
+                mailOptions.replyTo = mailOptions.from;
+                mailOptions.from = smtpServer.username;
+            }
+
             var jobAttachs = new AsyncJob(AsyncJob.PARALLEL) ;
             if(mail.attachs.length>0){
                 mailOptions.attachments = [] ;
