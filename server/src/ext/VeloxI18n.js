@@ -1,5 +1,20 @@
 let cacheTranslations = null;
 
+
+
+function getJoinTables(tables, joins){
+    if(joins){
+        joins.forEach(function(join){
+            if(tables.indexOf(join.otherTable) === -1){
+                tables.push(join.otherTable) ;
+            }
+            if(join.joins){
+                getJoinTables(tables, join.joins);
+            }
+        });
+    }
+}
+
 /**
  * This extension handle user management in database
  * 
@@ -97,42 +112,55 @@ class VeloxI18n{
         
     }
 
+
     beforeSearchHook(client, table, callback){
-        if(client["initI18n"+table]){ return callback() ;}
-        let lang = client.getLang() ;
-        if(lang === "base"){ return callback() ;}
-        client.getSchema((err, schema)=>{
-            if(err){ return callback(err) ;}
-            client["initI18n"+table] = true ;
-            let tableSql = client.getTable(table) ;
-            let translatedColumns = [] ;
-            this.options.tables.some(function(t){
-                if(t.name === table){
-                    translatedColumns = t.columns.map(function(c){ return c.name ;});
-                    return true;
-                }
+        var tables = [] ;
+        if(typeof(table) === "string"){
+            tables.push(table) ;
+        }else{
+            Object.keys(table).forEach(function(k){
+                tables.push(table[k].table||k) ;
+                getJoinTables(tables, table[k].joinFetch) ;
             }) ;
-            let notTranslatedColumns = schema[table].columns.filter(function(c){
-                return translatedColumns.indexOf(c.name) === -1;
-            }).map(function(c){ return c.name ;}) ;
-
-            let from = tableSql+" m " ;
-            let columns = notTranslatedColumns ;
-            let pk = schema[table].pk[0] ;
-            for(let col of translatedColumns){
-                let alias = "t_"+col ;
-                from += ` LEFT JOIN (
-                        SELECT uid, value FROM velox_translation WHERE lang='${lang}' AND table_name='${table}' and col='${col}'
-                        ) ${alias} ON ${alias}.uid = m.${pk} ` ;
-                columns.push('COALESCE('+alias+'.value, m.'+col+') AS "'+col+'"') ;
+        }
+        if(tables.every((table)=>{ return this.options.tables.indexOf(table) ===-1 || !!client["initI18n"+table] ; })){ return callback() ; }
+        client.getSchema((err, schema)=>{
+            for(let table of tables){
+                if(this.options.tables.indexOf(table) ===-1 || client["initI18n"+table]){ return callback() ;}
+                let lang = client.getLang() ;
+                if(lang === "base"){ return callback() ;}
+                if(err){ return callback(err) ;}
+                client["initI18n"+table] = true ;
+                let tableSql = client.getTable(table) ;
+                let translatedColumns = [] ;
+                this.options.tables.some(function(t){
+                    if(t.name === table){
+                        translatedColumns = t.columns.map(function(c){ return c.name ;});
+                        return true;
+                    }
+                }) ;
+                let notTranslatedColumns = schema[table].columns.filter(function(c){
+                    return translatedColumns.indexOf(c.name) === -1;
+                }).map(function(c){ return c.name ;}) ;
+    
+                let from = tableSql+" m " ;
+                let columns = notTranslatedColumns ;
+                let pk = schema[table].pk[0] ;
+                for(let col of translatedColumns){
+                    let alias = "t_"+col ;
+                    from += ` LEFT JOIN (
+                            SELECT uid, value FROM velox_translation WHERE lang='${lang}' AND table_name='${table}' and col='${col}'
+                            ) ${alias} ON ${alias}.uid = m.${pk} ` ;
+                    columns.push('COALESCE('+alias+'.value, m.'+col+') AS "'+col+'"') ;
+                }
+                let cols = columns.join(",") ;
+    
+                var sql = `(SELECT ${cols} FROM ${from})` ;
+                client["getTable_"+table] = function(){
+                    return sql ;
+                } ;
+                callback() ;
             }
-            let cols = columns.join(",") ;
-
-            var sql = `(SELECT ${cols} FROM ${from})` ;
-            client["getTable_"+table] = function(){
-                return sql ;
-            } ;
-            callback() ;
         }) ;
     }
 
