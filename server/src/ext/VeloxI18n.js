@@ -116,9 +116,9 @@ class VeloxI18n{
     }
 
 
-    beforeSearchHook(client, table, joinFetch, callback){
+    beforeSearchHook(client, tableP, joinFetch, callback){
         var tables = [] ;
-        tables.push(table) ;
+        tables.push(tableP) ;
         getJoinTables(tables, joinFetch) ;
         if(tables.every((table)=>{ return !this.translatedTables[table] || !!client["initI18n"+table] ; })){ return callback() ; }
         let lang = client.getLang() ;
@@ -152,7 +152,7 @@ class VeloxI18n{
                 }
                 let cols = columns.join(",") ;
     
-                var sql = `(SELECT ${cols} FROM ${from})` ;
+                let sql = `(SELECT ${cols} FROM ${from})` ;
                 client["getTable_"+table] = function(){
                     return sql ;
                 } ;
