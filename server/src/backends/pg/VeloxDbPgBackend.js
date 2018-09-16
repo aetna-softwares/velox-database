@@ -383,7 +383,11 @@ class VeloxDbPgClient {
                             rec.record[col.name] = JSON.parse(rec.record[col.name]) ;
                         }catch(e){}
                     }else{
-                        rec.record[col.name] = [rec.record[col.name]] ;
+                        if(rec.record[col.name] === null || rec.record[col.name] === undefined){
+                            rec.record[col.name] = [] ;
+                        }else{
+                            rec.record[col.name] = [rec.record[col.name]] ;
+                        }
                     }
                 }
             }
