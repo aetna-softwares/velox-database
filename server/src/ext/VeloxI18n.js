@@ -97,7 +97,7 @@ class VeloxI18n{
 
         let beforeSearchHook = function(table, search, joinFetch, callback){
             let client = this;
-            let callback = arguments[arguments.length-1] ;
+            //let callback = arguments[arguments.length-1] ;
             self.beforeSearchHook(client, table, joinFetch, callback) ;
         } ;
 
