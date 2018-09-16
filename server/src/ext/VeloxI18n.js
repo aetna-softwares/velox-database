@@ -95,7 +95,7 @@ class VeloxI18n{
         this.interceptClientQueries.push({name : "insert", table: "velox_translation", before : this.beforeSaveTranslation });
         this.interceptClientQueries.push({name : "update", table: "velox_translation", before : this.beforeSaveTranslation });
 
-        let beforeSearchHook = function(table, search, joinFetch){
+        let beforeSearchHook = function(table, search, joinFetch, callback){
             let client = this;
             let callback = arguments[arguments.length-1] ;
             self.beforeSearchHook(client, table, joinFetch, callback) ;
