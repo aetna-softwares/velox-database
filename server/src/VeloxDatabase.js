@@ -305,12 +305,15 @@ class VeloxDatabase {
                     if(action === "updateWhere"){
                         job.push((cb)=>{
                             updatePlaceholder(record) ;
-                            tx.updateWhere(table, record.values, record.conditions, (err)=>{
+                            tx.updateWhere(table, record.values, record.conditions, (err, results)=>{
                                 if(err){ return cb(err); }
-                                results.push({
-                                    action: "removeWhere",
-                                    table : table
-                                }) ;
+                                for(let res of results){
+                                    results.push({
+                                        action: "update",
+                                        table : table,
+                                        record: res
+                                    }) ;
+                                }
                                 cb() ;
                             }) ;
                         });
