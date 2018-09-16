@@ -715,7 +715,7 @@ class VeloxDbPgClient {
                 }
             }
 
-            let sql = `UPDATE ${table} SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;
+            let sql = `UPDATE ${table} t SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;
 
             this._queryFirst(sql, params, (err, row) => {
                 if(err){ return callback(err) ;}
