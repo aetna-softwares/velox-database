@@ -305,9 +305,9 @@ class VeloxDatabase {
                     if(action === "updateWhere"){
                         job.push((cb)=>{
                             updatePlaceholder(record) ;
-                            tx.updateWhere(table, record.values, record.conditions, (err, results)=>{
+                            tx.updateWhere(table, record.values, record.conditions, (err, updateResults)=>{
                                 if(err){ return cb(err); }
-                                for(let res of results){
+                                for(let res of updateResults){
                                     results.push({
                                         action: "update",
                                         table : table,
