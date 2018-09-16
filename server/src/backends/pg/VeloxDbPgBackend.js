@@ -702,7 +702,6 @@ class VeloxDbPgClient {
 
             let sets = [];
 
-            let columns = schema[table].columns ;
             try {
                 var {where, params} = this._prepareWhereCondition(columns, conditions, table) ;
             }catch(e){
