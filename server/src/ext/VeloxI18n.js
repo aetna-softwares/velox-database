@@ -122,11 +122,11 @@ class VeloxI18n{
         getJoinTables(tables, joinFetch) ;
         if(tables.every((table)=>{ return !this.translatedTables[table] || !!client["initI18n"+table] ; })){ return callback() ; }
         client.getSchema((err, schema)=>{
+            if(err){ return callback(err) ;}
             for(let table of tables){
                 if(!this.translatedTables[table] || client["initI18n"+table]){ return callback() ;}
                 let lang = client.getLang() ;
                 if(lang === "base"){ return callback() ;}
-                if(err){ return callback(err) ;}
                 client["initI18n"+table] = true ;
                 let tableSql = client.getTable(table) ;
                 let translatedColumns = [] ;
@@ -156,8 +156,8 @@ class VeloxI18n{
                 client["getTable_"+table] = function(){
                     return sql ;
                 } ;
-                callback() ;
             }
+            callback() ;
         }) ;
     }
 
