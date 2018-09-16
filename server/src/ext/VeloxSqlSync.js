@@ -180,6 +180,10 @@ class VeloxSqlSync{
                                 //remove where, the condition will be test on the current db values, the result should be conform to expectation
                                 records.push(change);
                                 cb();
+                            }else if(change.action === "udpateWhere"){
+                                //udpate where, the condition will be test on the current db values, the result should be conform to expectation
+                                records.push(change);
+                                cb();
                             }else if(change.action === "remove"){
                                 client.getByPk(change.table, change.record, (err, recordDb)=>{
                                     if(err){ return cb(err); }

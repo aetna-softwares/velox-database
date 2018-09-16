@@ -681,6 +681,56 @@ class VeloxDbPgClient {
 
 
     /**
+     * Update all record where condition is true
+     * 
+     * @example
+     * //delete by simple column
+     * client.updateWhere("foo", {col: "newval"}, {"bar": 2}, (err)=>{...})
+     * //delete by condition
+     * client.removeWhere("foo", {col: "newval"}, {"bar": {ope : ">", value : 1}}, (err)=>{...})
+     * 
+     * @param {string} table the table name
+     * @param {object} values the new values
+     * @param {object} condition the search condition
+     * @param {function(Error)} callback called when done
+     */
+    updateWhere(table, values, conditions, callback){
+        this.getSchema((err, schema)=>{
+            if(err){ return callback(err); }
+
+            let columns = schema[table].columns ;
+
+            let sets = [];
+
+            let columns = schema[table].columns ;
+            try {
+                var {where, params} = this._prepareWhereCondition(columns, conditions, table) ;
+            }catch(e){
+                callback(e) ;
+            }
+
+            for(let c of columns){
+                if(values[c.name] !== undefined){
+                    params.push(values[c.name]) ;
+                    sets.push("\""+c.name+"\" = $"+params.length) ;
+                }
+            }
+
+            let sql = `UPDATE ${table} SET ${sets.join(",")} WHERE ${where.join(" AND ")} RETURNING *` ;
+
+            this._queryFirst(sql, params, (err, row) => {
+                if(err){ return callback(err) ;}
+                if(!row){
+                    return callback(null, null) ;
+                }
+                var records = this.constructResults(schema, table,  null, [row], null) ;
+                callback(null, records) ;
+            }) ;
+        }) ;
+    }
+
+
+    /**
      * Insert a record in the table. Give back the inserted record (with potential generated values)
      * 
      * @param {string} table the table name

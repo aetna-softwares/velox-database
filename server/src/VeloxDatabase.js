@@ -302,6 +302,19 @@ class VeloxDatabase {
                             }) ;
                         });
                     }
+                    if(action === "updateWhere"){
+                        job.push((cb)=>{
+                            updatePlaceholder(record) ;
+                            tx.updateWhere(table, record.values, record.conditions, (err)=>{
+                                if(err){ return cb(err); }
+                                results.push({
+                                    action: "removeWhere",
+                                    table : table
+                                }) ;
+                                cb() ;
+                            }) ;
+                        });
+                    }
                     if(!action || action === "auto"){
                         job.push((cb)=>{
                             updatePlaceholder(record) ;

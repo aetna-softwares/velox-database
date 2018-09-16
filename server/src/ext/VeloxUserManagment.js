@@ -1040,6 +1040,9 @@ class VeloxUserManagment{
                 this.interceptClientQueries.push(
                     {name : "update", table: table.name, before : createRestrictFunction(table, "update") }
                 );
+                this.interceptClientQueries.push(
+                    {name : "updateWhere", table: table.name, before : createRestrictFunction(table, "update") }
+                );
                 
                     
                 this.interceptClientQueries.push(
