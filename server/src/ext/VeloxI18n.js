@@ -90,6 +90,7 @@ class VeloxI18n{
             this.interceptClientQueries.push({name : "getByPk", table: table.name, after : this.translateOne });
             this.interceptClientQueries.push({name : "searchFirst", table: table.name, before : beforeSearchHook });//, after : this.translateOne });
             this.interceptClientQueries.push({name : "search", table: table.name, before : beforeSearchHook });//, after : this.translateMany });
+            this.interceptClientQueries.push({name : "multiread", table: table.name, before : beforeSearchHook });//, after : this.translateMany });
             this.interceptClientQueries.push({name : "insert", table: table.name, after : this.translateSaveHook });
             this.interceptClientQueries.push({name : "update", table: table.name, after : this.translateSaveHook });
         }
