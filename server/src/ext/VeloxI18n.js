@@ -101,14 +101,18 @@ class VeloxI18n{
             self.beforeSearchHook(client, table, callback) ;
         } ;
 
+        this.interceptClientQueries.push({name : "multiread", before : beforeSearchHook });//, after : this.translateMany });
+        this.translatedTables = {} ;
         for(let table of options.tables){
+            this.translatedTables[table.name] = true ;
             this.interceptClientQueries.push({name : "getByPk", table: table.name, after : this.translateOne });
             this.interceptClientQueries.push({name : "searchFirst", table: table.name, before : beforeSearchHook });//, after : this.translateOne });
             this.interceptClientQueries.push({name : "search", table: table.name, before : beforeSearchHook });//, after : this.translateMany });
-            this.interceptClientQueries.push({name : "multiread", before : beforeSearchHook });//, after : this.translateMany });
             this.interceptClientQueries.push({name : "insert", table: table.name, after : this.translateSaveHook });
             this.interceptClientQueries.push({name : "update", table: table.name, after : this.translateSaveHook });
         }
+
+
         
     }
 
@@ -123,10 +127,10 @@ class VeloxI18n{
                 getJoinTables(tables, table[k].joinFetch) ;
             }) ;
         }
-        if(tables.every((table)=>{ return this.options.tables.indexOf(table) ===-1 || !!client["initI18n"+table] ; })){ return callback() ; }
+        if(tables.every((table)=>{ return !this.translatedTables[table] || !!client["initI18n"+table] ; })){ return callback() ; }
         client.getSchema((err, schema)=>{
             for(let table of tables){
-                if(this.options.tables.indexOf(table) ===-1 || client["initI18n"+table]){ return callback() ;}
+                if(!this.translatedTables[table] || client["initI18n"+table]){ return callback() ;}
                 let lang = client.getLang() ;
                 if(lang === "base"){ return callback() ;}
                 if(err){ return callback(err) ;}
