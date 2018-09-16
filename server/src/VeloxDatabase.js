@@ -416,7 +416,16 @@ class VeloxDatabase {
                     let jobBefore = new AsyncJob(AsyncJob.SERIES) ;
                     for(let int of interceptors.filter(function(int){return !int.table || (int.table === tableName && int.before) ;})){
                         jobBefore.push((cb)=>{
-                            callOneInterceptor(int.before, [args[0], args[1]], cb) ;
+                            var argsCall = [args[0], args[1]] ;
+                            if((actionName === "search" || actionName === "searchFirst" || actionName === "getByPk")){
+                                //read interceptor, give the joinFetch if any
+                                if(Array.isArray(args[2])){
+                                    argsCall.push(args[2]) ;
+                                }else{
+                                    argsCall.push(null) ;
+                                }
+                            }
+                            callOneInterceptor(int.before, argsCall, cb) ;
                         });
                     }
                     jobBefore.async((err)=>{

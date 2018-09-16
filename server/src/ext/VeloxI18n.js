@@ -95,13 +95,12 @@ class VeloxI18n{
         this.interceptClientQueries.push({name : "insert", table: "velox_translation", before : this.beforeSaveTranslation });
         this.interceptClientQueries.push({name : "update", table: "velox_translation", before : this.beforeSaveTranslation });
 
-        let beforeSearchHook = function(table){
+        let beforeSearchHook = function(table, joinFetch){
             let client = this;
             let callback = arguments[arguments.length-1] ;
-            self.beforeSearchHook(client, table, callback) ;
+            self.beforeSearchHook(client, table, joinFetch, callback) ;
         } ;
 
-        this.interceptClientQueries.push({name : "multiread", before : beforeSearchHook });//, after : this.translateMany });
         this.translatedTables = {} ;
         for(let table of options.tables){
             this.translatedTables[table.name] = true ;
@@ -117,16 +116,10 @@ class VeloxI18n{
     }
 
 
-    beforeSearchHook(client, table, callback){
+    beforeSearchHook(client, table, joinFetch, callback){
         var tables = [] ;
-        if(typeof(table) === "string"){
-            tables.push(table) ;
-        }else{
-            Object.keys(table).forEach(function(k){
-                tables.push(table[k].table||k) ;
-                getJoinTables(tables, table[k].joinFetch) ;
-            }) ;
-        }
+        tables.push(table) ;
+        getJoinTables(tables, joinFetch) ;
         if(tables.every((table)=>{ return !this.translatedTables[table] || !!client["initI18n"+table] ; })){ return callback() ; }
         client.getSchema((err, schema)=>{
             for(let table of tables){
