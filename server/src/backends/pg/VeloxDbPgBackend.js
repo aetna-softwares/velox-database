@@ -213,6 +213,25 @@ class VeloxDbPgClient {
         return table;
     }
 
+    /**
+     * If you want to change the way data are inserted for a table
+     * 
+     * @example
+     * this.extendsClient = {
+     *    getColumnWrite_foo = function(table, column, paramNumber){ return "PGP_SYM_ENCRYPT($"+paramNumber+",'AES_KEY')" ;}
+     * }
+     * 
+     * @param {string} table the table name
+     * @param {string} column the column name
+     * @param {number} paramNumber the param number
+     */
+    getColumnWrite(table, column, paramNumber) {
+        if(this["getColumnWrite_"+table]){
+            return this["getColumnWrite_"+table](table, column, paramNumber) ;
+        }
+        return "$"+paramNumber ;
+    }
+
     _createFromWithJoin(table, joinFetch, params, schema){
         let from = [`${this.getTable(table)} t`] ;
         let select = ["t.*"] ;
@@ -715,7 +734,7 @@ class VeloxDbPgClient {
             for(let c of columns){
                 if(values[c.name] !== undefined){
                     params.push(values[c.name]) ;
-                    sets.push("\""+c.name+"\" = $"+params.length) ;
+                    sets.push("\""+c.name+"\" = "+this.getColumnWrite(table, c.name, params.length)) ;
                 }
             }
 
@@ -781,7 +800,7 @@ class VeloxDbPgClient {
                         valuesCols.push("nextval('"+sequences[c]+"')") ;
                     }else{
                         params.push(record[c]) ;
-                        valuesCols.push("$"+params.length) ;
+                        valuesCols.push(this.getColumnWrite(table, c.name, params.length)) ;
                     }
                 }
                 values.push(`(${valuesCols.join(",")})`);
@@ -828,7 +847,7 @@ class VeloxDbPgClient {
             for(let c of columns){
                 if(record[c.name] !== undefined && pkColumns.indexOf(c.name) === -1){
                     params.push(record[c.name]) ;
-                    sets.push("\""+c.name+"\" = $"+params.length) ;
+                    sets.push("\""+c.name+"\" = "+this.getColumnWrite(table, c.name, params.length)) ;
                 }
             }
             let where = [] ;
