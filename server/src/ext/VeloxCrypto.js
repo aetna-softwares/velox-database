@@ -158,7 +158,7 @@ class VeloxCryto{
         let changes = [] ;
 
         changes.push({
-            sql: "CREATE EXTENSION pgcrypto IF NOT EXISTS"
+            sql: "CREATE EXTENSION pgcrypto"
         }) ;
 
         for(let table of this.options.tables){
