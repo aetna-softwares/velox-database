@@ -176,9 +176,12 @@ class VeloxCryto{
                             }
                             tx._query(`ALTER TABLE ${table.name} ALTER COLUMN "${col.name}" TYPE TEXT`, (err) => {
                                 if(err){ return cb(err); }
-                                tx._query(`UPDATE ${table.name} SET "${col.name}" = PGP_SYM_ENCRYPT("${col.name}",'${this.key}')`, (err) => {
+                                tx._query(`DISCARD PLANS`, (err) => {
                                     if(err){ return cb(err); }
-                                    cb() ;
+                                    tx._query(`UPDATE ${table.name} SET "${col.name}" = PGP_SYM_ENCRYPT("${col.name}",'${this.key}')`, (err) => {
+                                        if(err){ return cb(err); }
+                                        cb() ;
+                                    }) ;
                                 }) ;
                             }) ;
                         }) ;
