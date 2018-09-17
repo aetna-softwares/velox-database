@@ -911,9 +911,7 @@ class VeloxDbPgClient {
             this._query(sql, params, (err, result)=>{
                 if(err){ return callback(err); }
 
-                if(!joinFetch){
-                    return callback(null, result.rows) ;
-                }
+                
                 let records = null;
                 try{
                     records = this.constructResults(schema, table,  aliases, result.rows, joinFetch) ;
