@@ -301,8 +301,8 @@ class VeloxSqlModifTracker{
                 table_name varchar(128),
                 table_uid varchar(255),
                 column_name varchar(128),
-                column_before varchar(255),
-                column_after varchar(255),
+                column_before TEXT,
+                column_after TEXT,
                 realm_code varchar(30),
                 user_uid varchar(40),
                 PRIMARY KEY (table_name, table_uid, version_table, version_record, version_date, column_name)
@@ -417,7 +417,7 @@ class VeloxSqlModifTracker{
                                 -- save all modifications in tracking table
                                 IF OLD."${c}" <> NEW."${c}" THEN
                                     INSERT INTO velox_modif_track (version_record, version_table, version_date, version_user, table_name, table_uid, column_name, column_before, column_after)
-                                    VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', ${pkInOld}, '${c}', substring(OLD."${c}"::varchar, 1, 255), substring(NEW."${c}"::varchar, 1, 255)) ;
+                                    VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', ${pkInOld}, '${c}', OLD."${c}", NEW."${c}") ;
                                 END IF ;
                                 ` ;
                             }
