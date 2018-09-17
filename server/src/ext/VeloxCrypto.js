@@ -85,7 +85,7 @@ class VeloxCryto{
             //For each crypted column, we add the crypting function on the fly when insert/update
             this.extendsClient["getColumnWrite_"+table.name] = function(table, column, paramNumber){
                 if(cryptedColumns[column]){
-                    return "PGP_SYM_ENCRYPT($"+paramNumber+","+this.key+")" ;
+                    return "PGP_SYM_ENCRYPT($"+paramNumber+",'"+self.key+"')" ;
                 }else{
                     return "$"+paramNumber ;
                 }
