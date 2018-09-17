@@ -800,7 +800,7 @@ class VeloxDbPgClient {
                         valuesCols.push("nextval('"+sequences[c]+"')") ;
                     }else{
                         params.push(record[c]) ;
-                        valuesCols.push(this.getColumnWrite(table, c.name, params.length)) ;
+                        valuesCols.push(this.getColumnWrite(table, c, params.length)) ;
                     }
                 }
                 values.push(`(${valuesCols.join(",")})`);
