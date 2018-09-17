@@ -415,7 +415,7 @@ class VeloxSqlModifTracker{
                             for(let c of columns){
                                 trig += `
                                 -- save all modifications in tracking table
-                                IF OLD."${c}"::text <> NEW."${c}"::text THEN
+                                IF pg_typeof(OLD."${c}") = pg_typeof(NEW."${c}") AND OLD."${c}" <> NEW."${c}" THEN
                                     INSERT INTO velox_modif_track (version_record, version_table, version_date, version_user, table_name, table_uid, column_name, column_before, column_after)
                                     VALUES (NEW.velox_version_record, table_version, NEW.velox_version_date, NEW.velox_version_user, '${table}', ${pkInOld}, '${c}', OLD."${c}", NEW."${c}") ;
                                 END IF ;
