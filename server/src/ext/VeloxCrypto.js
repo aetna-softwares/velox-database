@@ -166,7 +166,7 @@ class VeloxCryto{
                 changes.push({
                     run: (tx, cb)=>{
                         tx._query(`SELECT data_type FROM information_schema.columns WHERE table_name = $1
-                          AND column_name = 2`,[table.name, col.name], (err, result)=>{
+                          AND column_name = $2`,[table.name, col.name], (err, result)=>{
                             if(err){ return cb(err); }
                             if(result.rows.length === 0){
                                 return cb("Column "+col.name+" does not exists in table "+table.name) ;
