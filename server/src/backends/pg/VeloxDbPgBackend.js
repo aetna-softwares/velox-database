@@ -404,7 +404,7 @@ class VeloxDbPgClient {
                     }else{
                         if(rec.record[col.name] === null || rec.record[col.name] === undefined){
                             rec.record[col.name] = [] ;
-                        }else{
+                        }else if(!Array.isArray(rec.record[col.name])){
                             rec.record[col.name] = [rec.record[col.name]] ;
                         }
                     }
