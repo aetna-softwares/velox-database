@@ -49,7 +49,7 @@ class VeloxCryto{
      */
 
     /**
-     * Create the VeloxI18n extension
+     * Create the VeloxCrypto extension
      * 
      * @param {VeloxCryptoOptions} [options] options 
      */
@@ -107,8 +107,6 @@ class VeloxCryto{
         tables.push(tableP) ;
         getJoinTables(tables, joinFetch) ;
         if(tables.every((table)=>{ return !this.cryptedTables[table] || !!client["initCrypto"+table] ; })){ return callback() ; }
-        let lang = client.getLang() ;
-        if(lang === "base"){ return callback() ;}
         client.getSchema((err, schema)=>{
             if(err){ return callback(err) ;}
             for(let table of tables){
