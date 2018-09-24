@@ -134,7 +134,6 @@ class VeloxSqlSync{
         }else if(change.action === "udpateWhere"){
             //udpate where, the condition will be test on the current db values, the result should be conform to expectation
             cb(null, change);
-            cb();
         }else if(change.action === "remove"){
             client.getByPk(change.table, change.record, (err, recordDb)=>{
                 if(err){ return cb(err); }
@@ -155,7 +154,13 @@ class VeloxSqlSync{
                 change.action === "insert" ;
                 return cb(null, change) ;
             }
-            client.getByPk(change.table, change.record, (err, recordDb)=>{
+            let search = {} ;
+            for(let pkCol of schema[change.table].pk){
+                if(change.record[pkCol] !== undefined && change.record[pkCol] !== null && !/^\$\{.*\}$/.test(change.record[pkCol])){
+                    search[pkCol] = change.record[pkCol] ;
+                }
+            }
+            client.searchFirst(change.table, search, (err, recordDb)=>{
                 if(err){ return cb(err); }
                 if(!recordDb){
                     //record does not exists yet, 

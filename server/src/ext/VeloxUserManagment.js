@@ -870,6 +870,8 @@ class VeloxUserManagment{
                                 change.record[table.realmCol] = user.realms[0].realm_code;
                             }
                             callback() ;
+                        }else{
+                            callback() ;
                         }
                     };
                 } ;
