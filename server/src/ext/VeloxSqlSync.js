@@ -86,6 +86,12 @@ class VeloxSqlSync{
                 self.applyChangeSet(this.backend, changeSet, {}, callback) ;
             }
         } ;
+        this.extendsClient = {
+            syncPrepareRecord : function(table, change, schema, changeDateTimestampMilli, cb){
+                //this is the VeloxDatabase object
+                self.syncPrepareRecord(this, table, change, schema, changeDateTimestampMilli, cb) ;
+            }
+        } ;
         this.extendsExpressProto = {
             getSyncMiddleware: function(){
                 return (req, res)=>{
@@ -120,6 +126,201 @@ class VeloxSqlSync{
         ] ;
     }
 
+
+    syncPrepareRecord(client, table, change, schema, changeDateTimestampMilli, cb){
+        if(change.action === "removeWhere"){
+            //remove where, the condition will be test on the current db values, the result should be conform to expectation
+            cb(null, change);
+        }else if(change.action === "udpateWhere"){
+            //udpate where, the condition will be test on the current db values, the result should be conform to expectation
+            cb(null, change);
+            cb();
+        }else if(change.action === "remove"){
+            client.getByPk(change.table, change.record, (err, recordDb)=>{
+                if(err){ return cb(err); }
+                if(!recordDb){
+                    //record does not exists yet, it has been removed already, don't do anything
+                    cb();
+                }else{
+                    //the record is still here, add the remove
+                    cb(null, change);
+                }
+            });
+        }else if(change.action === "insert" && schema[change.table].pk.length === 0){
+            //insert and no PK known for this table, insert it, it won't crash in duplicate key !
+            cb(null, change);
+        }else{ //insert or update
+            if(!schema[change.table].pk.some((pk)=>{ return change.record[pk] !== undefined && change.record[pk] !== null && !/^\$\{.*\}$/.test(change.record[pk]) ; })){
+                //no PK provided, it must be an insert
+                change.action === "insert" ;
+                return cb(null, change) ;
+            }
+            client.getByPk(change.table, change.record, (err, recordDb)=>{
+                if(err){ return cb(err); }
+                if(!recordDb){
+                    //record does not exists yet, 
+                    if(change.action === "update"){
+                        //check if we are updating a deleted record
+                        client.getPrimaryKey(change.table, (err, pkNames)=>{
+                            if(err){ return cb(err); }
+
+                            let pkValue = pkNames.map(function(pk){
+                                return change.record[pk] ;
+                            }).join(" || '$_$' || ") ;
+
+                            client.searchFirst("velox_delete_track", {table_name: change.table, table_uid: pkValue}, (err, deleteRecord)=>{
+                                if(err){ return cb(err); }
+                                if(deleteRecord){
+                                    //the record has been deleted, ingore the modification
+                                    cb() ;
+                                }else{
+                                    //the record does not exists and was not deleted, create it
+                                    change.action = "insert" ;
+                                    cb(null, change);
+                                }
+                            });
+                        });
+
+                    }else{
+                        //it is an insert, it is normal that the record does not exist
+                        //insert it
+                        change.action = "insert" ;
+                        cb(null, change);
+                    }
+                }else{
+                    //record exist in database
+                    if(recordDb.velox_version_record < change.record.velox_version_record){
+                        //record in database is older, update
+                        console.log("RECORD IN DB IS OLDER", change.table, recordDb, change.record) ;
+                        change.action = "update" ;
+                        cb(null, change) ;
+                    }else{
+                        //record in database is more recent, compare which column changed
+
+                        let changedColumns = Object.keys(change.record).filter((col)=>{
+                            var isMasked = this.maskedColumns.some((m)=>{ return m.table === change.table && m.column === col ;}) ;
+                            if(isMasked){ return false ;}
+                            return col.indexOf("velox_") !== 0 &&
+                                change.record[col] != recordDb[col]; //don't do !== on purpose because 1 shoud equals "1"
+                        }) ;
+
+                        if(changedColumns.length === 0){
+                            //no modifications to do, no need to go further
+                            return cb() ;
+                        }
+
+
+
+                        client.getPrimaryKey(change.table, (err, pkNames)=>{
+                            if(err){ return cb(err); }
+
+                            let pkValue = pkNames.map(function(pk){
+                                return change.record[pk] ;
+                            }).join(" || '$_$' || ") ;
+
+                            client.search("velox_modif_track", {
+                                table_name: change.table, 
+                                table_uid: pkValue, 
+                                version_record: {ope: ">", value: (change.record.velox_version_record || 0)-1}
+                            }, "version_record", (err, modifications)=>{
+                                if(err){ return cb(err); }
+                                
+                                var records = [];
+                                for(let modif of modifications){
+                                    let index = changedColumns.indexOf(modif.column_name);
+                                    if(index !== -1){
+                                        //conflicting column
+                                        
+                                        let modifDateMilli = new Date(modif.version_date).getTime() ;
+
+                                        if(modifDateMilli <= changeDateTimestampMilli){
+                                            //the modif date is older that our new modification
+                                            //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
+                                        }else{
+                                            //the modif date is newer, we won't change in the table but we must modify the modif track
+                                            // from oldval -> dbVal to oldval -> myVal -> dbVal
+                                            var oldestVal = modif.column_before;
+                                            var midWayVal = "" + change.record[modif.column_name] ;  
+                                            
+                                            //modifying existing modif by setting our change value as old value
+                                            modif.column_before = midWayVal ;
+                                            records.push({table : "velox_modif_track", action: "update", record: modif});
+                                            records.push({table : "velox_modif_track", action: "insert", record: {
+                                                version_date : new Date(changeDateTimestampMilli),
+                                                column_before : oldestVal,
+                                                column_after : midWayVal,
+                                                column_name : modif.column_name,
+                                                table_name: change.table,
+                                                table_uid: pkValue,
+                                                version_user : change.record.velox_version_user,
+                                                version_table : recordDb.version_table||0,
+                                                version_record: recordDb.version_record || 0
+                                            }});
+
+                                            //remove from changed column
+                                            changedColumns.splice(index, 1) ;
+                                            //remove column from record
+                                            delete change.record[modif.column_name] ;
+                                        }
+                                    }
+                                }
+
+                                let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
+                                console.log("RECORD ???????",  change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
+                                if(change.action === "insert"){
+                                    //case of conflicting insert, check diff on row time
+                                    console.log("WHO WIN 11 ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
+                                    changedColumns.forEach((changedCol, index)=>{
+                                        console.log("WHO WIN ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli)) ;
+                                        if(modifDateMilli <= changeDateTimestampMilli){
+                                            //the modif date is older that our new modification
+                                            //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
+                                        }else{
+                                            //the modif date is newer, we won't change in the table but we must insert the modif track
+                                            let oldestVal = ""+change.record[changedCol] ;
+                                            let newVal = "" + recordDb[changedCol] ;  
+                                            
+                                            //insert modif track
+                                            records.push({table : "velox_modif_track", action: "insert", record: {
+                                                version_date : new Date(changeDateTimestampMilli),
+                                                column_before : oldestVal,
+                                                column_after : newVal,
+                                                column_name : changedCol,
+                                                table_uid: pkValue,
+                                                table_name: change.table,
+                                                version_user : recordDb.velox_version_user,
+                                                version_table : recordDb.version_table||0,
+                                                version_record: recordDb.version_record || 0
+                                            }});
+
+                                            //remove from changed column
+                                            changedColumns.splice(index, 1) ;
+                                            //remove column from record
+                                            delete change.record[changedCol] ;
+                                        }
+                                    }) ;
+                                }
+
+
+
+                                    
+                                if(changedColumns.length === 0){
+                                    //no modifications left to do
+                                    return cb(null, records) ;
+                                } else {
+                                    // still some modification to do, apply them
+                                    console.log("MODIF TO DO ???????",  change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
+                                    change.action = "update" ;
+                                    records.push(change) ;
+                                    cb(null, records) ;
+                                }
+                            }) ;
+                        }) ;
+                    }
+                }
+            }) ;
+        }
+    }
 
 
     /**
@@ -176,205 +377,16 @@ class VeloxSqlSync{
                     if(err){ return done(err) ;}
                     for(let change of changeSet.changes){
                         job.push((cb)=>{
-                            if(change.action === "removeWhere"){
-                                //remove where, the condition will be test on the current db values, the result should be conform to expectation
-                                records.push(change);
-                                cb();
-                            }else if(change.action === "udpateWhere"){
-                                //udpate where, the condition will be test on the current db values, the result should be conform to expectation
-                                records.push(change);
-                                cb();
-                            }else if(change.action === "remove"){
-                                client.getByPk(change.table, change.record, (err, recordDb)=>{
-                                    if(err){ return cb(err); }
-                                    if(!recordDb){
-                                        //record does not exists yet, it has been removed already, don't do anything
-                                        cb();
-                                    }else{
-                                        //the record is still here, add the remove
-                                        records.push(change);
-                                        cb();
-                                    }
-                                });
-                            }else if(change.action === "insert" && schema[change.table].pk.length === 0){
-                                //insert and no PK known for this table, insert it, it won't crash in duplicate key !
-                                records.push(change);
-                                cb();
-                            }else{ //insert or update
-                                if(!schema[change.table].pk.some((pk)=>{ return change.record[pk] !== undefined && change.record[pk] !== null && !/^\$\{.*\}$/.test(change.record[pk]) ; })){
-                                    //no PK provided, it must be an insert
-                                    change.action === "insert" ;
-                                    records.push(change);
-                                    return cb() ;
+                            client.syncPrepareRecord(change.table, change, schema, changeDateTimestampMilli, (err, changes)=>{
+                                if(err){ return cb(err) ;}
+                                if(!changes){ return cb() ;}
+                                if(!Array.isArray(changes)){
+                                    changes = [changes] ;
                                 }
-                                client.getByPk(change.table, change.record, (err, recordDb)=>{
-                                    if(err){ return cb(err); }
-                                    if(!recordDb){
-                                        //record does not exists yet, 
-                                        if(change.action === "update"){
-                                            //check if we are updating a deleted record
-                                            client.getPrimaryKey(change.table, (err, pkNames)=>{
-                                                if(err){ return cb(err); }
-
-                                                let pkValue = pkNames.map(function(pk){
-                                                    return change.record[pk] ;
-                                                }).join(" || '$_$' || ") ;
-
-                                                client.searchFirst("velox_delete_track", {table_name: change.table, table_uid: pkValue}, (err, deleteRecord)=>{
-                                                    if(err){ return cb(err); }
-                                                    if(deleteRecord){
-                                                        //the record has been deleted, ingore the modification
-                                                        cb() ;
-                                                    }else{
-                                                        //the record does not exists and was not deleted, create it
-                                                        change.action = "insert" ;
-                                                        records.push(change);
-                                                        cb();
-                                                    }
-                                                });
-                                            });
-
-                                        }else{
-                                            //it is an insert, it is normal that the record does not exist
-                                            //insert it
-                                            change.action = "insert" ;
-                                            records.push(change);
-                                            cb();
-                                        }
-                                    }else{
-                                        //record exist in database
-                                        if(recordDb.velox_version_record < change.record.velox_version_record){
-                                            //record in database is older, update
-                                            console.log("RECORD IN DB IS OLDER", change.table, recordDb, change.record) ;
-                                            change.action = "update" ;
-                                            records.push(change);
-                                            cb() ;
-                                        }else{
-                                            //record in database is more recent, compare which column changed
-                
-                                            let changedColumns = Object.keys(change.record).filter((col)=>{
-                                                var isMasked = this.maskedColumns.some((m)=>{ return m.table === change.table && m.column === col ;}) ;
-                                                if(isMasked){ return false ;}
-                                                return col.indexOf("velox_") !== 0 &&
-                                                    change.record[col] != recordDb[col]; //don't do !== on purpose because 1 shoud equals "1"
-                                            }) ;
-                
-                                            if(changedColumns.length === 0){
-                                                //no modifications to do, no need to go further
-                                                return cb() ;
-                                            }
-
-
-                
-                                            client.getPrimaryKey(change.table, (err, pkNames)=>{
-                                                if(err){ return cb(err); }
-
-                                                let pkValue = pkNames.map(function(pk){
-                                                    return change.record[pk] ;
-                                                }).join(" || '$_$' || ") ;
-
-                                                client.search("velox_modif_track", {
-                                                    table_name: change.table, 
-                                                    table_uid: pkValue, 
-                                                    version_record: {ope: ">", value: (change.record.velox_version_record || 0)-1}
-                                                }, "version_record", (err, modifications)=>{
-                                                    if(err){ return cb(err); }
-                                                    
-                
-                                                    for(let modif of modifications){
-                                                        let index = changedColumns.indexOf(modif.column_name);
-                                                        if(index !== -1){
-                                                            //conflicting column
-                                                            
-                                                            let modifDateMilli = new Date(modif.version_date).getTime() ;
-                
-                                                            if(modifDateMilli <= changeDateTimestampMilli){
-                                                                //the modif date is older that our new modification
-                                                                //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
-                                                            }else{
-                                                                //the modif date is newer, we won't change in the table but we must modify the modif track
-                                                                // from oldval -> dbVal to oldval -> myVal -> dbVal
-                                                                var oldestVal = modif.column_before;
-                                                                var midWayVal = "" + change.record[modif.column_name] ;  
-                                                                
-                                                                //modifying existing modif by setting our change value as old value
-                                                                modif.column_before = midWayVal ;
-                                                                records.push({table : "velox_modif_track", action: "update", record: modif});
-                                                                records.push({table : "velox_modif_track", action: "insert", record: {
-                                                                    version_date : new Date(changeDateTimestampMilli),
-                                                                    column_before : oldestVal,
-                                                                    column_after : midWayVal,
-                                                                    column_name : modif.column_name,
-                                                                    table_name: change.table,
-                                                                    table_uid: pkValue,
-                                                                    version_user : change.record.velox_version_user,
-                                                                    version_table : recordDb.version_table||0,
-                                                                    version_record: recordDb.version_record || 0
-                                                                }});
-                
-                                                                //remove from changed column
-                                                                changedColumns.splice(index, 1) ;
-                                                                //remove column from record
-                                                                delete change.record[modif.column_name] ;
-                                                            }
-                                                        }
-                                                    }
-
-                                                    let modifDateMilli = new Date(recordDb.velox_version_date).getTime() ;
-                                                    console.log("RECORD ???????",  change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
-                                                    if(change.action === "insert"){
-                                                        //case of conflicting insert, check diff on row time
-                                                        console.log("WHO WIN 11 ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
-                                                        changedColumns.forEach((changedCol, index)=>{
-                                                            console.log("WHO WIN ??", change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli)) ;
-                                                            if(modifDateMilli <= changeDateTimestampMilli){
-                                                                //the modif date is older that our new modification
-                                                                //this can happen if 2 offline synchronize but the newest user synchronize after the oldest
-                                                            }else{
-                                                                //the modif date is newer, we won't change in the table but we must insert the modif track
-                                                                let oldestVal = ""+change.record[changedCol] ;
-                                                                let newVal = "" + recordDb[changedCol] ;  
-                                                                
-                                                                //insert modif track
-                                                                records.push({table : "velox_modif_track", action: "insert", record: {
-                                                                    version_date : new Date(changeDateTimestampMilli),
-                                                                    column_before : oldestVal,
-                                                                    column_after : newVal,
-                                                                    column_name : changedCol,
-                                                                    table_uid: pkValue,
-                                                                    table_name: change.table,
-                                                                    version_user : recordDb.velox_version_user,
-                                                                    version_table : recordDb.version_table||0,
-                                                                    version_record: recordDb.version_record || 0
-                                                                }});
-                
-                                                                //remove from changed column
-                                                                changedColumns.splice(index, 1) ;
-                                                                //remove column from record
-                                                                delete change.record[changedCol] ;
-                                                            }
-                                                        }) ;
-                                                    }
-
-
-                
-                                                        
-                                                    if(changedColumns.length === 0){
-                                                        //no modifications left to do
-                                                        return cb() ;
-                                                    } else {
-                                                        // still some modification to do, apply them
-                                                        console.log("MODIF TO DO ???????",  change.table, pkValue, new Date(modifDateMilli), new Date(changeDateTimestampMilli), changedColumns) ;
-                                                        change.action = "update" ;
-                                                        records.push(change) ;
-                                                        cb() ;
-                                                    }
-                                                }) ;
-                                            }) ;
-                                        }
-                                    }
-                                }) ;
-                            }
+                                for(let change of changes){
+                                    records.push(change) ;
+                                }
+                            }) ;
                         });
                     }
                     job.async(done) ;

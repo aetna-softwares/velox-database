@@ -856,6 +856,24 @@ class VeloxUserManagment{
                     }, table.hiddenCols) ;
                 };
 
+                var createRestrictSyncFunction = function(table, action){
+                    return function(tableName, change, callback){
+                        if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
+                            let user = this.context.req.user ;
+
+                            //force user col if any
+                            if(tableName !== 'velox_user' && table.userCol && table.userCol.indexOf(".") === -1 && !change.record[table.userCol]){
+                                change.record[table.userCol] = user.uid;
+                            }
+
+                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && !change.record[table.realmCol] && user.realms.length>0){
+                                change.record[table.realmCol] = user.realms[0].realm_code;
+                            }
+                            callback() ;
+                        }
+                    };
+                } ;
+
                 var createRestrictFunction = function(table, action){
                     return function(tableName, record, callback){
                         if(!this.disableRestriction && this.context && this.context.req && this.context.req.user){
@@ -1042,6 +1060,10 @@ class VeloxUserManagment{
                 );
                 this.interceptClientQueries.push(
                     {name : "updateWhere", table: table.name, before : createRestrictFunction(table, "update") }
+                );
+                
+                this.interceptClientQueries.push(
+                    {name : "syncPrepareRecord", table: table.name, before : createRestrictSyncFunction(table, "syncPrepareRecord") }
                 );
                 
                     
