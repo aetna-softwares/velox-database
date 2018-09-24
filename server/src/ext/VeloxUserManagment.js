@@ -1016,7 +1016,7 @@ class VeloxUserManagment{
                                             }
                                             from += ` JOIN ${table.name} `+createJoinOnFromFk(this.cache.schema, currentTable, table.name) ;
 
-                                            this.cache.schema[table.name].pk.map((pkCol)=>{
+                                            where = this.cache.schema[table.name].pk.map((pkCol)=>{
                                                 params.push(record[pkCol]) ;
                                                 return table.name+"."+pkCol + " = $"+params.length ;
                                             }).join(" AND ") ;
