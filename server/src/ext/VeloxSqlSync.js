@@ -391,6 +391,7 @@ class VeloxSqlSync{
                                 for(let change of changes){
                                     records.push(change) ;
                                 }
+                                cb() ;
                             }) ;
                         });
                     }
