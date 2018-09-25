@@ -1014,15 +1014,15 @@ class VeloxUserManagment{
                                                     from += ` JOIN ${tableName} `+createJoinOnFromFk(this.cache.schema, previousTable, tableName) ;
                                                 }
                                             }
-                                            if(action === "insert"){
-                                                //check on FK as PK does not exist yet
-                                                let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
-                                                where = Object.keys(whereCols).map((thisCol)=>{
+                                            let fkCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
+                                            if(Object.keys(fkCols).every((c)=>{ return record[c] ;} )){
+                                                //the FK is given, test on it
+                                                where = Object.keys(fkCols).map((thisCol)=>{
                                                     params.push(record[thisCol]) ;
-                                                    return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                                    return realmColPath[0]+"."+fkCols[thisCol] + " = $"+params.length ;
                                                 }).join(" AND ") ;
                                             }else{
-                                                //update / remove : check on PK as FK is not always given
+                                                //no FK given, join with PK
                                                 from += ` JOIN ${table.name} `+createJoinOnFromFk(this.cache.schema, currentTable, table.name) ;
     
                                                 where = this.cache.schema[table.name].pk.map((pkCol)=>{
