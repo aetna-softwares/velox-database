@@ -1014,12 +1014,22 @@ class VeloxUserManagment{
                                                     from += ` JOIN ${tableName} `+createJoinOnFromFk(this.cache.schema, previousTable, tableName) ;
                                                 }
                                             }
-                                            from += ` JOIN ${table.name} `+createJoinOnFromFk(this.cache.schema, currentTable, table.name) ;
-
-                                            where = this.cache.schema[table.name].pk.map((pkCol)=>{
-                                                params.push(record[pkCol]) ;
-                                                return table.name+"."+pkCol + " = $"+params.length ;
-                                            }).join(" AND ") ;
+                                            if(action === "insert"){
+                                                //check on FK as PK does not exist yet
+                                                let whereCols = getJoinPairsFromFk(this.cache.schema, table.name, realmColPath[0]) ;
+                                                where = Object.keys(whereCols).map((thisCol)=>{
+                                                    params.push(record[thisCol]) ;
+                                                    return realmColPath[0]+"."+whereCols[thisCol] + " = $"+params.length ;
+                                                }).join(" AND ") ;
+                                            }else{
+                                                //update / remove : check on PK as FK is not always given
+                                                from += ` JOIN ${table.name} `+createJoinOnFromFk(this.cache.schema, currentTable, table.name) ;
+    
+                                                where = this.cache.schema[table.name].pk.map((pkCol)=>{
+                                                    params.push(record[pkCol]) ;
+                                                    return table.name+"."+pkCol + " = $"+params.length ;
+                                                }).join(" AND ") ;
+                                            }
                                         } else {
                                             params.push(record[realmColPath[0]]) ;
                                             where = "r.realm_code = $"+params.length ;
