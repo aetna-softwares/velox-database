@@ -1,6 +1,8 @@
 const AsyncJob = require("velox-commons/AsyncJob") ;
 const VeloxSqlModifTracker = require("./VeloxSqlModifTracker");
 const VeloxSqlDeleteTracker = require("./VeloxSqlDeleteTracker");
+const multiparty = require('multiparty');
+
 /**
  * Add changeset sync for database
  * 
@@ -95,15 +97,30 @@ class VeloxSqlSync{
         this.extendsExpressProto = {
             getSyncMiddleware: function(){
                 return (req, res)=>{
-                    let changes = req.body.changes;
-                    let context = {} ;
-                    this._setContext(context, req) ;
-                    self.applyChangeSet(this.db, changes,context,(err, result)=>{
-                        if (err) {
-                            this.db.logger.error("sync failed : "+ err, changes);
-                            return res.status(500).json(err);
+                    var form = new multiparty.Form();
+                    form.parse(req, (err, fields, files) => {
+                        if(!fields.changes && !fields.changes[0]){
+                            let err = "Missing changes" ;
+                            this.db.logger.error(err) ;
+                            return res.status(500).end(err) ; 
                         }
-                        res.json(result) ;
+                        let changes ;
+                        try{
+                            changes = JSON.parse(fields.changes[0]) ;
+                        }catch(err){
+                            this.db.logger.error(err) ;
+                            return res.status(500).end(this._formatErr(err)) ; 
+                        }
+
+                        let context = {} ;
+                        this._setContext(context, req) ;
+                        self.applyChangeSet(this.db, changes,context,(err, result)=>{
+                            if (err) {
+                                this.db.logger.error("sync failed : "+ err, changes);
+                                return res.status(500).json(err);
+                            }
+                            res.json(result) ;
+                        }) ;
                     }) ;
                 } ;
             },
