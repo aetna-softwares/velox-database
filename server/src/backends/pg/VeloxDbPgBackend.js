@@ -1037,6 +1037,8 @@ class VeloxDbPgClient {
                     //simple value ope
                     if(ope === "=" && value === null){
                         where.push(alias+".\""+c.name+"\" IS NULL") ;
+                    }else if(ope === "<>" && value === null){
+                        where.push(alias+".\""+c.name+"\" IS NOT NULL") ;
                     }else{
                         params.push(value) ;
                         where.push(alias+".\""+c.name+"\" "+ope+" $"+params.length) ;
