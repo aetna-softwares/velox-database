@@ -62,7 +62,7 @@
 
         //add auth api entry
         var activateEndPoint = client.options.activateEndPoint || "activateUser" ;
-        var ajaxActivate = client._createEndPointFunction(activateEndPoint , "POST", [ "activationToken", "password" ]) ;
+        var ajaxActivate = client._createEndPointFunction(activateEndPoint , "POST", [ "activationToken", "password", "login" ]) ;
         var activateFun = function(token, password, directLogin, callback){
             if(typeof(directLogin) === "function"){
                 callback = directLogin;

@@ -1509,10 +1509,15 @@ class VeloxUserManagment{
      * @param {string} [password] user password (not hashed)
      * @param {function(err, user)} callback called with user if succeed
      */
-    activateUser(db, activationToken, password, callback) {
+    activateUser(db, activationToken, password, login, callback) {
         if(typeof(password) === "function"){
             callback = password ;
             password = null;
+            login = null;
+        }
+        if(typeof(login) === "function"){
+            callback = login ;
+            login = null;
         }
         db.transaction((client, done)=>{
             let sql = "SELECT * FROM velox_user WHERE activation_token = $1" ;
@@ -1537,13 +1542,36 @@ class VeloxUserManagment{
                     return done("ALREADY_ACTIVE") ;
                 }
 
-                var updateData = {active: true, uid: user.uid} ;
-                if(password){
-                    updateData.password = password ;
-                }
-                client.update("velox_user", updateData, (err, user)=>{
+                let checkLogin = function(login, callback){
+                    if(!login){ return callback(null, true) ;}
+                    client._query("SELECT login FROM velox_user WHERE login = $1 AND activation_token <> $2", [login, activationToken], (err, resultsLogin)=>{
+                        if(err){ return callback(err) ;}
+                        if(resultsLogin.rows.length > 0){
+                            callback(null, false) ;
+                        }else{
+                            callback(null, true) ;
+                        }
+                    }) ;
+                } ;
+
+                checkLogin(login, (err, loginOK)=>{
                     if(err){ return done(err); }
-                    return done(null, user) ;
+
+                    if(!loginOK){
+                        return done("LOGIN_ALREADY_EXISTS") ;
+                    }
+
+                    var updateData = {active: true, uid: user.uid} ;
+                    if(password){
+                        updateData.password = password ;
+                    }
+                    if(login){
+                        updateData.login = login ;
+                    }
+                    client.update("velox_user", updateData, (err, user)=>{
+                        if(err){ return done(err); }
+                        return done(null, user) ;
+                    }) ;
                 }) ;
             }) ;
         }, (err,result)=>{
