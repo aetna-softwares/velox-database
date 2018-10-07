@@ -170,9 +170,9 @@ class VeloxUserManagment{
                 //this is the VeloxDatabase object
                 self.authenticateGoogleUser(this, token, callback) ;
             },
-            activate : function(activationToken, password, callback){
+            activate : function(activationToken, password, login, callback){
                 //this is the VeloxDatabase object
-                self.activateUser(this, activationToken, password, callback) ;
+                self.activateUser(this, activationToken, password, login, callback) ;
             },
             changeUserPassword : function(userUid, oldPassword, newPassword, callback){
                 //this is the VeloxDatabase object
@@ -559,7 +559,7 @@ class VeloxUserManagment{
                 });
                 app.post(options.activateEndPoint || "/activateUser",
                     (req, res) => {
-                        this.db.activate(req.body.activationToken, req.body.password, (err, user)=>{
+                        this.db.activate(req.body.activationToken, req.body.password, req.body.login, (err, user)=>{
                             if(err){ return res.status(500).json(err); }
                             res.json(user) ;
                         }) ;
