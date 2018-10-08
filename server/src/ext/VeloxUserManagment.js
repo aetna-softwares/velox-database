@@ -1485,8 +1485,14 @@ class VeloxUserManagment{
                 email.to_addr = user.email ;
                
                 var updateData = {password_token: uuid.v4(), password_token_validity: new Date(new Date().getTime()+(2*60*60*1000)), uid: user.uid} ;
-                email.text = (email.text || "").replace(new RegExp("__activation_token__", "g"), updateData.password_token);
-                email.html = (email.html || "").replace(new RegExp("__activation_token__", "g"), updateData.password_token);
+                email.text = (email.text || "")
+                    .replace(new RegExp("__activation_token__", "g"), updateData.password_token)
+                    .replace(new RegExp("__login__", "g"), user.login)
+                    ;
+                email.html = (email.html || "")
+                    .replace(new RegExp("__activation_token__", "g"), updateData.password_token)
+                    .replace(new RegExp("__login__", "g"), user.login)
+                    ;
 
                 client.insert("velox_mail", email, (err)=>{
                     if(err){ return done(err); }
