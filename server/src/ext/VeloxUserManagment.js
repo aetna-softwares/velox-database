@@ -1326,7 +1326,7 @@ class VeloxUserManagment{
                         return done(null, false) ;
                     }
 
-                    this.removePassword(user) ;
+                    this.removePassword("velox_user", user) ;
 
                     client.search("velox_link_user_realm", {user_uid : user.uid}, [
                         {name : "realm", otherTable: "velox_user_realm"},
@@ -1609,7 +1609,7 @@ class VeloxUserManagment{
     }
 
     _getFullUser(client, user, callback){
-        this.removePassword(user) ;
+        this.removePassword("velox_user", user) ;
         
         client.search("velox_link_user_realm", {user_uid : user.uid}, [
             {name : "realm", otherTable: "velox_user_realm"},
