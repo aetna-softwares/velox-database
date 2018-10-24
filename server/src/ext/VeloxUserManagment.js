@@ -866,7 +866,7 @@ class VeloxUserManagment{
                                 change.record[table.userCol] = user.uid;
                             }
 
-                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && !change.record[table.realmCol] && user.realms.length>0){
+                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && !change.record[table.realmCol] && user.realms && user.realms.length>0){
                                 change.record[table.realmCol] = user.realms[0].realm_code;
                             }
                             callback() ;
@@ -887,7 +887,7 @@ class VeloxUserManagment{
                                 record[table.userCol] = user.uid;
                             }
 
-                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && !record[table.realmCol] && user.realms.length>0){
+                            if(tableName !== 'velox_user' && table.realmCol && table.realmCol.indexOf(".") === -1 && !record[table.realmCol] && user.realms && user.realms.length>0){
                                 record[table.realmCol] = user.realms[0].realm_code;
                             }
 
@@ -1102,7 +1102,7 @@ class VeloxUserManagment{
                                 userUid = user.uid;
                             }
 
-                            if(user && user.realms.length>0){
+                            if(user && user.realms && user.realms.length>0){
                                 realmCode = user.realms[0].realm_code;
                             }
 
