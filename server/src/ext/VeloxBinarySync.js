@@ -89,7 +89,7 @@ class VeloxBinarySync{
             getBinarySyncMiddleware: function(){
                 return (req, res)=>{
                     res.connection.setTimeout(0); //remove the 120s default timeout because client can take a long time to upload file
-                    var form = new multiparty.Form();
+                    var form = new multiparty.Form({ maxFieldsSize: 20 * 1024 * 1024 });
                     form.parse(req, (err, fields, files) => {
                         if (err) {
                             this.db.logger.error("error parse request", err);

@@ -159,7 +159,7 @@ class VeloxDatabaseExpress {
                         res.status(200).json(result) ;
                     }) ;
                 } else if(table === "transactionalChanges"){
-                    var form = new multiparty.Form();
+                    var form = new multiparty.Form({ maxFieldsSize: 20 * 1024 * 1024 });
                     form.parse(req, (err, fields, files) => {
                         if(err){ 
                             this.db.logger.error(this._formatErrLogger(err, req)) ;

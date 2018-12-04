@@ -97,7 +97,7 @@ class VeloxSqlSync{
         this.extendsExpressProto = {
             getSyncMiddleware: function(){
                 return (req, res)=>{
-                    var form = new multiparty.Form();
+                    var form = new multiparty.Form({ maxFieldsSize: 20 * 1024 * 1024 });
                     form.parse(req, (err, fields, files) => {
                         if(!fields.changes && !fields.changes[0]){
                             let err = "Missing changes" ;
