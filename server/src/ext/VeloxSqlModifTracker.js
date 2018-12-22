@@ -171,6 +171,11 @@ class VeloxSqlModifTracker{
                 this.createTriggerForTables(backend, tx, this.createTriggerBeforeInsert.bind(this), cb);
             }
         }) ;
+        changes.push({
+            run: (tx, cb)=>{
+                this.createTriggerAfterDelete(backend, tx, this.createTriggerBeforeInsert.bind(this), cb);
+            }
+        }) ;
 
         // changes.push({
         //     run: (tx, cb)=>{
