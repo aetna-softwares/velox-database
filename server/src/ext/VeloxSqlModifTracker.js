@@ -544,7 +544,7 @@ class VeloxSqlModifTracker{
                 
                 tx._query(trig, (err)=>{
                     if(err){ return callback(err); }
-                    tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondeleteversion BEFORE INSERT ON ${table} 
+                    tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondeleteversion AFTER DELETE ON ${table} 
                     FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_ondeleteversion()`, (err)=>{
                         if(err){ return callback(err); }
                         callback() ;
