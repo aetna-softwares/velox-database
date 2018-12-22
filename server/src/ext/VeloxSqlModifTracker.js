@@ -503,6 +503,55 @@ class VeloxSqlModifTracker{
         }
     }
 
+
+    /**
+     * Create the trigger on before insert on tracked table
+     * @param {string} backend 
+     * @param {object} tx 
+     * @param {string} table table name
+     * @param {function(Error)} callback 
+     */
+    createTriggerAfterDelete(backend, tx, table, callback){
+        if(backend === "pg"){
+            tx._query(`DROP TRIGGER IF EXISTS trig_velox_modiftrack_${table}_ondeleteversion ON ${table}`, (err)=>{
+                if(err){ return callback(err); }
+                let trig = `CREATE OR REPLACE FUNCTION func_velox_modiftrack_${table}_ondeleteversion() RETURNS trigger AS 
+                $$
+                    DECLARE table_version BIGINT;
+                    DECLARE found_version BIGINT;
+                    BEGIN 
+
+                    -- increment global table version
+                    SELECT nextval('velox_modiftrack_table_version_${table}') INTO table_version ;
+
+                    -- update information in global version_table
+                    SELECT version_table INTO found_version FROM velox_modif_table_version WHERE table_name = '${table}';
+                    IF NOT FOUND THEN
+                        INSERT INTO velox_modif_table_version(table_name, version_table, version_date) VALUES 
+                        ('${table}', table_version, now()) ;
+                    ELSE
+                        UPDATE velox_modif_table_version SET version_table=table_version, version_date=now() WHERE table_name='${table}' ;
+                    END IF;
+
+                END; 
+                $$ 
+                LANGUAGE 'plpgsql'` ;
+                
+                tx._query(trig, (err)=>{
+                    if(err){ return callback(err); }
+                    tx._query(`CREATE TRIGGER trig_velox_modiftrack_${table}_ondeleteversion BEFORE INSERT ON ${table} 
+                    FOR EACH ROW EXECUTE PROCEDURE func_velox_modiftrack_${table}_ondeleteversion()`, (err)=>{
+                        if(err){ return callback(err); }
+                        callback() ;
+                    }) ;
+                }) ;
+            }) ;
+        }else{
+            throw callback("not implemented for backend "+backend) ;
+        }
+    }
+
+
     /**
      * Get the list of table that does not have this column yet
      * 
