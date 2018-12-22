@@ -537,7 +537,7 @@ class VeloxSqlModifTracker{
                     ELSE
                         UPDATE velox_modif_table_version SET version_table=table_version, version_date=now() WHERE table_name='${table}' ;
                     END IF;
-
+                    RETURN OLD;
                 END; 
                 $$ 
                 LANGUAGE 'plpgsql'` ;
