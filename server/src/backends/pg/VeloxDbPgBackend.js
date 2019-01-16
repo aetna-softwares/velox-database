@@ -1521,7 +1521,7 @@ class VeloxDbPgClient {
     transaction(callbackDoTransaction, callbackDone, timeout){
         if(!callbackDone){ callbackDone = function(){} ;}
         var finished = false;
-        if(timeout === undefined){ timeout = 30; }
+        if(timeout === undefined){ timeout = 120; }
 			
         var tx = this.clone() ;
         tx.transaction = function(){ throw "You should not start a transaction in a transaction !"; } ;
