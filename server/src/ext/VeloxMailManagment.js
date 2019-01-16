@@ -165,8 +165,9 @@ class VeloxMailManagment{
                 // send mail with defined transport object
                 transporter.sendMail(mailOptions, (error, info) => {
                     if (error) {
-                        tx.update("velox_mail", {uid: mail.uid, 
-                            error: JSON.stringify(error),
+                        tx.update("velox_mail", {
+                            uid: mail.uid, 
+                            //error: JSON.stringify(error),
                             status: "error"
                         }, function(err){
                             if(err){
@@ -222,23 +223,28 @@ class VeloxMailManagment{
         }
         this.cronRunning = true ;
         try {
-            db.transaction((client, done)=>{
+            db.inDatabase((client, done)=>{
                 client.search("velox_mail", {status: "tosend"}, [
                     {otherTable: "velox_mail_attach", type: "2many", name: "attachs"}
-                ], (err, mails)=>{
-                    if(err){ return done(err) ;}
-                    let job = new AsyncJob(AsyncJob.SERIES) ;
-                    for(let mail of mails){
-                        if(!mail.schedule_date || mail.schedule_date < new Date()){
-                            job.push((cb)=>{
-                                this.sendAMail(client, mail, cb) ;
-                            }) ;
-                        }
+                ], done) ;
+            }, (err, mails)=>{
+                if(err){
+                    this.cronRunning = false ;
+                    return;
+                }
+                let job = new AsyncJob(AsyncJob.SERIES) ;
+                for(let mail of mails){
+                    if(!mail.schedule_date || mail.schedule_date < new Date()){
+                        job.push((cb)=>{
+                            db.transaction((client, done)=>{
+                                this.sendAMail(client, mail, done) ;
+                            }, cb) ;
+                        }) ;
                     }
-                    job.async(done) ;
+                }
+                job.async(()=>{
+                    this.cronRunning = false ;        
                 }) ;
-            }, ()=>{
-                this.cronRunning = false ;
             }) ;
         } catch (error) {
             this.cronRunning = false ;
