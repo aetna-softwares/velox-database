@@ -795,7 +795,7 @@
 
                                 multiread[table] = {search: search} ;
                                 if(localVersions[table]>=0){
-                                    multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, table_version: { ope: ">", value: localVersions[table] } }} ;
+                                    multiread[table+"_delete"] = {table: "velox_delete_track", search: { table_name: table, version_table: { ope: ">", value: localVersions[table] } }} ;
                                 }
                             }
 
