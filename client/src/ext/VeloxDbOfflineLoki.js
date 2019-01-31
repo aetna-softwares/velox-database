@@ -505,7 +505,7 @@
         if(reads.length === 0){
             return callback(null, {}) ;
         }
-        this._doASearch(reads, {}, callback);
+        this._doASearch(reads.slice(), {}, callback);
     };
 
     VeloxDbOfflineLoki.prototype._doASearch = function (reads, results, callback) {
