@@ -668,7 +668,7 @@ class VeloxUserManagment{
                 let unsafeClient = this.clone() ;
                 unsafeClient.disableRestriction = true ;
                 unsafeFun(unsafeClient, function(err){
-                    if(err){ callback(err) ;}
+                    if(err){ return callback(err) ;}
                     callback.apply(null, arguments) ;
                 }.bind(this)) ;
             } ;
