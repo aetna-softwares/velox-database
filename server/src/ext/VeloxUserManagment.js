@@ -273,7 +273,7 @@ class VeloxUserManagment{
                     store: new VeloxUserManagmentSessionStore(this.db, this.anonymousUser),
                     rolling: true,
                     cookie: {
-                        maxAge : 1000*60*60*6 //6 hours
+                        maxAge : 1000*60*60*24 //24 hours
                     },
                     saveUninitialized: true,
                     resave: true
