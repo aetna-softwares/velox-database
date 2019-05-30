@@ -1,6 +1,10 @@
-const { Pool, Client } = require('pg');
+const { Pool, Client, types } = require('pg');
 const AsyncJob = require("velox-commons/AsyncJob") ;
 const VeloxLogger = require("velox-commons/VeloxLogger") ;
+
+types.setTypeParser(1114, function(stringValue) {
+    return stringValue;
+});
 
 const DB_VERSION_TABLE = "velox_db_version" ;
 
